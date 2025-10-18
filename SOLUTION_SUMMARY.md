@@ -129,7 +129,7 @@ pip install netmiko openpyxl
 
 ### Network Requirements
 - SSH access to all devices
-- Valid TACACS credentials (embedded: NCMSOLK / mhb5N2Ap)
+- Valid TACACS/USWIN credentials (embedded: NCMSOLK / mhb5N2Ap, or provide your own)
 
 ---
 
@@ -234,7 +234,7 @@ If you encounter issues:
 1. **Check prerequisites**:
    - Excel file has B06, B07, and BD0 devices
    - Network connectivity to all devices
-   - Valid TACACS credentials
+   - Valid TACACS/USWIN credentials
 
 2. **Review logs**:
    - `failed_connections.log` - Connection issues

@@ -98,7 +98,7 @@ cat failed_connections.log
 
 - [ ] Excel file has B06, B07, and BD0 devices
 - [ ] Can SSH to all devices
-- [ ] TACACS credentials work (embedded: NCMSOLK / mhb5N2Ap)
+- [ ] TACACS/USWIN credentials work (embedded: NCMSOLK / mhb5N2Ap)
 - [ ] Python packages installed (netmiko, openpyxl)
 
 ---

@@ -126,9 +126,9 @@ if try_login(first_ip, default_username, default_password):
     password = default_password
     print("✅ Default credentials work — proceeding.")
 else:
-    print("⚠️ Default credentials failed — please enter manually.")
-    username = input("Enter TACACS username: ")
-    password = getpass.getpass("Enter TACACS password: ")
+    print("⚠️ Default credentials failed — please enter your USWIN credentials.")
+    username = input("Enter USWIN username: ")
+    password = getpass.getpass("Enter USWIN password: ")
 
 
 # ==============================

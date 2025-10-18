@@ -101,7 +101,7 @@ Default TACACS credentials are embedded:
 - **Username**: `NCMSOLK`
 - **Password**: `mhb5N2Ap`
 
-If these fail, you'll be prompted to enter credentials manually.
+If these fail, you'll be prompted to enter your USWIN username and password.
 
 ## Output
 

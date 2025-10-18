@@ -170,7 +170,7 @@ Excel File Structure:
 
 Network Access:
   • SSH connectivity to all devices
-  • TACACS credentials (embedded: NCMSOLK / mhb5N2Ap)
+  • TACACS/USWIN credentials (embedded: NCMSOLK / mhb5N2Ap, or provide your own)
 
 
 ═══════════════════════════════════════════════════════════════════════════

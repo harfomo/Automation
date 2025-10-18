@@ -13,7 +13,7 @@ import sys
 script_dir = os.path.dirname(os.path.abspath(__file__))
 input_file = os.path.join(script_dir, "network_inputs.xlsx")
 
-# Credentials
+# Credentials (TACACS/USWIN)
 default_username = "NCMSOLK"
 default_password = "mhb5N2Ap"
 global_connect_timeout = 15

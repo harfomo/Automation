@@ -162,7 +162,7 @@ Before running the script:
 - [ ] Dependencies installed (`pip install netmiko openpyxl`)
 - [ ] Excel file has B06, B07, and BD0 devices
 - [ ] Network connectivity to all devices
-- [ ] TACACS credentials valid (embedded: NCMSOLK / mhb5N2Ap)
+- [ ] TACACS/USWIN credentials valid (embedded: NCMSOLK / mhb5N2Ap, or provide your own)
 
 ---
 

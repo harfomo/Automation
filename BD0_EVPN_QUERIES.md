@@ -204,7 +204,7 @@ Before running in production:
 - [ ] Verify B07 device has RR-2-PEER configured
 - [ ] Test BD0 connectivity
 - [ ] Verify EVPN command syntax on your NXOS version
-- [ ] Check TACACS credentials are valid
+- [ ] Check TACACS/USWIN credentials are valid
 - [ ] Backup existing Excel file if it exists
 
 ---
