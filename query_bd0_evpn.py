@@ -19,6 +19,24 @@ default_username = "NCMSOLK"
 default_password = "mhb5N2Ap"
 global_connect_timeout = 15
 
+def test_credentials(device_ip, device_type, username, password):
+    """Test if credentials work on a device."""
+    try:
+        print(f"  🔐 Testing credentials on {device_ip}...")
+        conn = ConnectHandler(
+            device_type=device_type,
+            ip=device_ip,
+            username=username,
+            password=password,
+            timeout=global_connect_timeout
+        )
+        conn.disconnect()
+        print(f"  ✅ Credentials work on {device_ip}")
+        return True
+    except Exception as e:
+        print(f"  ⚠️ Credentials failed on {device_ip}: {e}")
+        return False
+
 def main():
     # Check if Excel file exists
     if not os.path.exists(input_file):
@@ -63,6 +81,25 @@ def main():
     if not bd0_device:
         print("❌ No device with 'BD0' in hostname found.")
         sys.exit(1)
+    
+    # Test credentials on B01 first if it exists
+    credentials_username = default_username
+    credentials_password = default_password
+    
+    if b01_device:
+        print("\n🔐 Testing default credentials on B01...")
+        if not test_credentials(b01_device["ip"], b01_device["device_type"], 
+                               credentials_username, credentials_password):
+            print("⚠️ Default credentials don't work on B01.")
+            print("⚠️ Please enter your credentials:")
+            credentials_username = input("Enter username: ")
+            credentials_password = getpass.getpass("Enter password: ")
+            print(f"\n🔐 Testing provided credentials on B01...")
+            if not test_credentials(b01_device["ip"], b01_device["device_type"],
+                                   credentials_username, credentials_password):
+                print("❌ Provided credentials also failed on B01.")
+                print("⚠️ Continuing with BD0 queries only (B01 will be skipped)")
+                b01_device = None  # Skip B01 if credentials don't work
     
     # Find B06 and B07 devices and their RR-2-PEER IPs
     print("\n🔍 Searching for RR-2-PEER IPs from iBGP-TO- neighbors...")
@@ -115,33 +152,15 @@ def main():
         
         try:
             print(f"\n🔗 Connecting to B01...")
-            b01_username = default_username
-            b01_password = default_password
-            
-            try:
-                conn_b01 = ConnectHandler(
-                    device_type=b01_device["device_type"],
-                    ip=b01_device["ip"],
-                    username=b01_username,
-                    password=b01_password,
-                    timeout=global_connect_timeout
-                )
-                print("✅ Connected to B01!")
-            except Exception as conn_error:
-                print(f"⚠️ Connection to B01 failed with default credentials: {conn_error}")
-                print("⚠️ Please enter your USWIN credentials for B01:")
-                b01_username = input("Enter USWIN username: ")
-                b01_password = getpass.getpass("Enter USWIN password: ")
-                
-                print(f"🔗 Retrying connection to B01 with USWIN credentials...")
-                conn_b01 = ConnectHandler(
-                    device_type=b01_device["device_type"],
-                    ip=b01_device["ip"],
-                    username=b01_username,
-                    password=b01_password,
-                    timeout=global_connect_timeout
-                )
-                print("✅ Connected to B01 with USWIN credentials!")
+            # Use already tested credentials
+            conn_b01 = ConnectHandler(
+                device_type=b01_device["device_type"],
+                ip=b01_device["ip"],
+                username=credentials_username,
+                password=credentials_password,
+                timeout=global_connect_timeout
+            )
+            print("✅ Connected to B01!")
             
             # Get BGP AS number
             print("\n  ▶ Running: sh run bgp | i \"router bgp\"")
@@ -193,8 +212,9 @@ def main():
     # Connect to BD0 device
     print(f"\n🔗 Connecting to {bd0_device['hostname']} ({bd0_device['ip']})...")
     
-    bd0_username = default_username
-    bd0_password = default_password
+    # Use tested credentials (same as B01 if it was tested, or defaults)
+    bd0_username = credentials_username
+    bd0_password = credentials_password
     
     try:
         connection = ConnectHandler(
