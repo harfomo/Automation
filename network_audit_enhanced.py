@@ -600,14 +600,33 @@ if bd0_device and b06_rr2_peer_ip and b07_rr2_peer_ip:
     
     try:
         print(f"\n🔗 Connecting to BD0...")
-        connection = ConnectHandler(
-            device_type=bd0_device["device_type"],
-            ip=bd0_device["ip"],
-            username=username,
-            password=password,
-            timeout=global_connect_timeout
-        )
-        print("✅ Connected to BD0!")
+        bd0_username = username
+        bd0_password = password
+        
+        try:
+            connection = ConnectHandler(
+                device_type=bd0_device["device_type"],
+                ip=bd0_device["ip"],
+                username=bd0_username,
+                password=bd0_password,
+                timeout=global_connect_timeout
+            )
+            print("✅ Connected to BD0!")
+        except Exception as conn_error:
+            print(f"⚠️ Connection to BD0 failed with default credentials: {conn_error}")
+            print("⚠️ Please enter your USWIN credentials for BD0:")
+            bd0_username = input("Enter USWIN username: ")
+            bd0_password = getpass.getpass("Enter USWIN password: ")
+            
+            print(f"🔗 Retrying connection to BD0 with USWIN credentials...")
+            connection = ConnectHandler(
+                device_type=bd0_device["device_type"],
+                ip=bd0_device["ip"],
+                username=bd0_username,
+                password=bd0_password,
+                timeout=global_connect_timeout
+            )
+            print("✅ Connected to BD0 with USWIN credentials!")
         
         # Define EVPN commands
         evpn_queries = [

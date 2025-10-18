@@ -5,6 +5,7 @@ Script to query EVPN routes from BD0 device using RR-2-PEER IPs from B06/B07.
 
 from netmiko import ConnectHandler
 from openpyxl import load_workbook
+import getpass
 import re
 import os
 import sys
@@ -116,18 +117,37 @@ def main():
     # Connect to BD0 device
     print(f"\n🔗 Connecting to {bd0_device['hostname']} ({bd0_device['ip']})...")
     
+    bd0_username = default_username
+    bd0_password = default_password
+    
     try:
         connection = ConnectHandler(
             device_type=bd0_device["device_type"],
             ip=bd0_device["ip"],
-            username=default_username,
-            password=default_password,
+            username=bd0_username,
+            password=bd0_password,
             timeout=global_connect_timeout
         )
         print("✅ Connected successfully!")
-    except Exception as e:
-        print(f"❌ Failed to connect: {e}")
-        sys.exit(1)
+    except Exception as conn_error:
+        print(f"⚠️ Connection failed with default credentials: {conn_error}")
+        print("⚠️ Please enter your USWIN credentials for BD0:")
+        bd0_username = input("Enter USWIN username: ")
+        bd0_password = getpass.getpass("Enter USWIN password: ")
+        
+        print(f"🔗 Retrying connection to BD0 with USWIN credentials...")
+        try:
+            connection = ConnectHandler(
+                device_type=bd0_device["device_type"],
+                ip=bd0_device["ip"],
+                username=bd0_username,
+                password=bd0_password,
+                timeout=global_connect_timeout
+            )
+            print("✅ Connected successfully with USWIN credentials!")
+        except Exception as e:
+            print(f"❌ Failed to connect with USWIN credentials: {e}")
+            sys.exit(1)
     
     # Execute commands and collect results
     print("\n📊 Executing EVPN commands...")
