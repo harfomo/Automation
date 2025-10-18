@@ -54,7 +54,7 @@ def main():
         sys.exit(1)
     
     # Find B06 and B07 devices and their RR-2-PEER IPs
-    print("\n🔍 Searching for RR-2-PEER IPs from B06 and B07...")
+    print("\n🔍 Searching for RR-2-PEER IPs from iBGP-TO- neighbors...")
     b06_rr2_ip = None
     b07_rr2_ip = None
     
@@ -63,21 +63,29 @@ def main():
             continue
         
         device_ip = row[0]
-        neighbor_desc = row[1]
+        neighbor_desc = str(row[1])
         neighbor_ip = row[2]
         
-        # Check if this is RR-2-PEER
-        if "RR-2-PEER" in str(neighbor_desc):
-            # Find which device this belongs to
+        # Check if this is an iBGP-TO- neighbor
+        if neighbor_desc.startswith("iBGP-TO-"):
+            # Extract peer hostname from description
+            peer_hostname = neighbor_desc.replace("iBGP-TO-", "").strip()
+            
+            # Find which device this neighbor entry belongs to
             for dev_row in devices_ws.iter_rows(min_row=2, values_only=True):
                 if dev_row and dev_row[1] == device_ip:
                     hostname = dev_row[0]
-                    if "B06" in hostname:
-                        b06_rr2_ip = neighbor_ip
-                        print(f"✅ Found B06 RR-2-PEER: {neighbor_ip} (from {hostname})")
-                    elif "B07" in hostname:
+                    
+                    # B06's RR-2-PEER = iBGP-TO-<B07> on B06 device
+                    if peer_hostname.endswith("B07") and "B06" in hostname:
                         b07_rr2_ip = neighbor_ip
-                        print(f"✅ Found B07 RR-2-PEER: {neighbor_ip} (from {hostname})")
+                        print(f"✅ Found B07 RR-2-PEER: {neighbor_ip} (from {neighbor_desc} on {hostname})")
+                    
+                    # B07's RR-2-PEER = iBGP-TO-<B06> on B07 device
+                    elif peer_hostname.endswith("B06") and "B07" in hostname:
+                        b06_rr2_ip = neighbor_ip
+                        print(f"✅ Found B06 RR-2-PEER: {neighbor_ip} (from {neighbor_desc} on {hostname})")
+                    
                     break
     
     if not b06_rr2_ip or not b07_rr2_ip:

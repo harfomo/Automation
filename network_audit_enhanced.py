@@ -455,14 +455,21 @@ for device in devices:
         if display_output:
             neighbors = extract_neighbors(display_output)
             for desc, ip_addr in neighbors:
-                # Store RR-2-PEER IPs for B06/B07
-                if "RR-2-PEER" in desc:
-                    if "B06" in device['hostname']:
+                # Store RR-2-PEER IPs based on iBGP-TO- descriptions
+                # B07's RR-2-PEER = iBGP-TO-<hostname_ending_with_B06> on B07 device
+                # B06's RR-2-PEER = iBGP-TO-<hostname_ending_with_B07> on B06 device
+                if desc.startswith("iBGP-TO-"):
+                    # Extract hostname from description (e.g., "iBGP-TO-NWCSDEBGB06" -> "NWCSDEBGB06")
+                    peer_hostname = desc.replace("iBGP-TO-", "").strip()
+                    
+                    if peer_hostname.endswith("B06") and "B07" in device['hostname']:
+                        # This is B06's RR-2-PEER (found on B07 device)
                         b06_rr2_peer_ip = ip_addr
-                        print(f"  📝 Stored B06 RR-2-PEER: {ip_addr}")
-                    elif "B07" in device['hostname']:
+                        print(f"  📝 Stored B06 RR-2-PEER: {ip_addr} (from {desc} on B07)")
+                    elif peer_hostname.endswith("B07") and "B06" in device['hostname']:
+                        # This is B07's RR-2-PEER (found on B06 device)
                         b07_rr2_peer_ip = ip_addr
-                        print(f"  📝 Stored B07 RR-2-PEER: {ip_addr}")
+                        print(f"  📝 Stored B07 RR-2-PEER: {ip_addr} (from {desc} on B06)")
 
                 is_ipv6 = ":" in ip_addr
                 router_id = get_router_for_context(desc, wsn_mobile_router_id)

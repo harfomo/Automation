@@ -106,12 +106,17 @@ The **path count** is placed in the "BGP EVPN IPv4/IPv6 Prefix (Adv)" column as 
 
 ### 1. RR-2-PEER IP Collection
 ```python
-# During B06/B07 processing
-if "RR-2-PEER" in desc:
-    if "B06" in device['hostname']:
-        b06_rr2_peer_ip = ip_addr
-    elif "B07" in device['hostname']:
+# During B06/B07 processing - using iBGP-TO- cross-reference
+if desc.startswith("iBGP-TO-"):
+    peer_hostname = desc.replace("iBGP-TO-", "").strip()
+    
+    # B06's RR-2-PEER = iBGP-TO-<B07> found on B06 device
+    if peer_hostname.endswith("B07") and "B06" in device['hostname']:
         b07_rr2_peer_ip = ip_addr
+    
+    # B07's RR-2-PEER = iBGP-TO-<B06> found on B07 device  
+    elif peer_hostname.endswith("B06") and "B07" in device['hostname']:
+        b06_rr2_peer_ip = ip_addr
 ```
 
 ### 2. BD0 Device Detection

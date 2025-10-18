@@ -33,8 +33,8 @@ python3 network_audit_enhanced.py
 ```
 
 **That's it!** The script will:
-- ✅ Query B06 and B07 for RR-2-PEER IPs
-- ✅ Query BD0 for EVPN routes
+- ✅ Query B06 and B07 for iBGP-TO- neighbor IPs (RR-2-PEER IPs)
+- ✅ Query BD0 for EVPN routes using those IPs
 - ✅ Save everything to Excel
 
 ---
@@ -61,7 +61,7 @@ The **path count** appears in the "BGP EVPN IPv4/IPv6 Prefix (Adv)" column.
 | Problem | Solution |
 |---------|----------|
 | "No BD0 device found" | Add device with "BD0" in hostname to Excel |
-| "Missing RR-2-PEER IPs" | Ensure B06/B07 have RR-2-PEER neighbors configured |
+| "Missing RR-2-PEER IPs" | Ensure B06 has iBGP-TO-<B07> and B07 has iBGP-TO-<B06> neighbors |
 | Connection timeout | Check network connectivity and credentials |
 | Parse error | Verify NXOS output format with test script |
 

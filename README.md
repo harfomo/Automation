@@ -119,8 +119,10 @@ All scripts create/update `network_inputs.xlsx` with three sheets:
 
 ### "Missing RR-2-PEER IPs"
 - The B06 and B07 devices must be queried first
-- Make sure they have RR-2-PEER neighbors configured
-- Check the Neighbors sheet for RR-2-PEER entries
+- They must have iBGP-TO- neighbors configured
+- B07 should have "iBGP-TO-<hostname_ending_with_B06>" neighbor
+- B06 should have "iBGP-TO-<hostname_ending_with_B07>" neighbor
+- Check the Neighbors sheet for iBGP-TO- entries
 
 ### Connection timeouts
 - Increase `global_connect_timeout` in the script (default: 15 seconds)

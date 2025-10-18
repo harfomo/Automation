@@ -115,9 +115,9 @@ The path count appears in the **"BGP EVPN IPv4/IPv6 Prefix (Adv)"** column, exac
 
 ### What the Enhanced Script Does:
 
-1. **Connects to B06** (Nokia) → Extracts RR-2-PEER IP (e.g., 10.1.1.10)
-2. **Connects to B07** (Nokia) → Extracts RR-2-PEER IP (e.g., 10.1.1.20)
-3. **Connects to BD0** (Cisco NXOS) → Runs 6 EVPN commands:
+1. **Connects to B06** (Nokia) → Finds iBGP-TO-<B07> neighbor → Extracts B07's RR-2-PEER IP
+2. **Connects to B07** (Nokia) → Finds iBGP-TO-<B06> neighbor → Extracts B06's RR-2-PEER IP
+3. **Connects to BD0** (Cisco NXOS) → Runs 6 EVPN commands using the captured IPs:
    ```
    show bgp l2vpn evpn rd 10.1.1.20:1 | i prefixes  [RAN from B07]
    show bgp l2vpn evpn rd 10.1.1.10:1 | i prefixes  [RAN from B06]
