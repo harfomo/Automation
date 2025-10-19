@@ -365,19 +365,14 @@ def extract_cpe_check_neighbors(output):
 b06_rr2_peer_ip = None
 b07_rr2_peer_ip = None
 bd0_device = None
-b01_device = None
-bgp_as_number = None
 
 for device in devices:
     print(f"\n🔗 Connecting to {device['ip']} ({device['hostname']}) — detected type: {device['device_type']}")
 
-    # Track BD0 and B01 devices for later
+    # Track BD0 device for later
     if "BD0" in device['hostname']:
         bd0_device = device
         print("  📌 Marked as BD0 device for EVPN queries")
-    elif "B01" in device['hostname']:
-        b01_device = device
-        print("  📌 Marked as B01 device for BGP AS number extraction")
 
     try:
         connection = ConnectHandler(
@@ -593,78 +588,7 @@ for device in devices:
 
 
 # ==============================
-# Step 7: Query B01 for BGP AS Number
-# ==============================
-if b01_device:
-    print("\n" + "="*70)
-    print("🔍 QUERYING B01 DEVICE FOR BGP AS NUMBER")
-    print("="*70)
-    print(f"B01 Device: {b01_device['hostname']} ({b01_device['ip']})")
-    
-    try:
-        print(f"\n🔗 Connecting to B01...")
-        b01_username = username
-        b01_password = password
-        
-        try:
-            connection = ConnectHandler(
-                device_type=b01_device["device_type"],
-                ip=b01_device["ip"],
-                username=b01_username,
-                password=b01_password,
-                timeout=global_connect_timeout
-            )
-            print("✅ Connected to B01!")
-        except Exception as conn_error:
-            print(f"⚠️ Connection to B01 failed with default credentials: {conn_error}")
-            print("⚠️ Please enter your USWIN credentials for B01:")
-            b01_username = input("Enter USWIN username: ")
-            b01_password = getpass.getpass("Enter USWIN password: ")
-            
-            print(f"🔗 Retrying connection to B01 with USWIN credentials...")
-            connection = ConnectHandler(
-                device_type=b01_device["device_type"],
-                ip=b01_device["ip"],
-                username=b01_username,
-                password=b01_password,
-                timeout=global_connect_timeout
-            )
-            print("✅ Connected to B01 with USWIN credentials!")
-        
-        # Get BGP AS number
-        print("\n  ▶ Running: sh run bgp | i \"router bgp\"")
-        try:
-            output = connection.send_command("sh run bgp | i \"router bgp\"", read_timeout=30)
-            results_ws.append([b01_device["ip"], "sh run bgp | i \"router bgp\"", output])
-            
-            # Parse BGP AS number from output
-            # Expected format: "router bgp 65000" or similar
-            match = re.search(r'router\s+bgp\s+(\d+)', output, re.IGNORECASE)
-            
-            if match:
-                bgp_as_number = match.group(1)
-                print(f"    ✅ Found BGP AS Number: {bgp_as_number}")
-            else:
-                print(f"    ⚠️ Could not parse BGP AS number from output: {output}")
-                bgp_as_number = "ERROR"
-            
-        except Exception as e:
-            print(f"    ❌ Command failed: {e}")
-            bgp_as_number = "ERROR"
-        
-        connection.disconnect()
-        print("\n✅ B01 BGP AS query completed!")
-        
-    except Exception as e:
-        print(f"❌ Failed to connect to B01: {e}")
-        log_failure(b01_device["ip"], str(e))
-        bgp_as_number = None
-else:
-    print("\n⚠️ No B01 device found - skipping BGP AS number query")
-
-
-# ==============================
-# Step 8: Query BD0 for EVPN routes
+# Step 7: Query BD0 for EVPN routes
 # ==============================
 if bd0_device and b06_rr2_peer_ip and b07_rr2_peer_ip:
     print("\n" + "="*70)
@@ -766,69 +690,25 @@ else:
 
 
 # ==============================
-# Step 9: Insert BGP AS Number at top of Neighbors sheet
-# ==============================
-if bgp_as_number:
-    try:
-        print(f"\n📝 Inserting BGP AS Number ({bgp_as_number}) at top of Neighbors sheet...")
-        # Insert a new row at position 2 (right after header)
-        neighbors_ws.insert_rows(2)
-        # Add BGP ID data in the new row
-        neighbors_ws.cell(row=2, column=1, value=b01_device["ip"] if b01_device else "")  # Device IP
-        neighbors_ws.cell(row=2, column=2, value="BGP ID")  # Description
-        neighbors_ws.cell(row=2, column=3, value=bgp_as_number)  # BGP AS Number
-        # Leave other columns empty
-        for col in range(4, 8):
-            neighbors_ws.cell(row=2, column=col, value="")
-        print("✅ BGP ID inserted at top of Neighbors sheet")
-    except Exception as e:
-        print(f"⚠️ Failed to insert BGP ID: {e}")
-
-
-# ==============================
-# Step 10: Reorder Neighbors by BGP_CONTEXTS
+# Step 8: Reorder Neighbors by BGP_CONTEXTS
 # ==============================
 try:
     context_order = {name: idx for idx, name in enumerate(BGP_CONTEXTS)}
-    # Get all rows except the first data row (BGP ID row if it exists)
-    all_rows = list(neighbors_ws.iter_rows(min_row=2, values_only=True))
-    
-    # Separate BGP ID row from other rows
-    bgp_id_row = None
-    other_rows = []
-    for row in all_rows:
-        if row and row[1] == "BGP ID":
-            bgp_id_row = row
-        else:
-            other_rows.append(row)
-    
-    # Sort other rows
-    other_rows.sort(key=lambda r: context_order.get(r[1], 9999))
-    
-    # Clear all data rows
+    rows = list(neighbors_ws.iter_rows(min_row=2, values_only=True))
+    rows.sort(key=lambda r: context_order.get(r[1], 9999))
     for r in range(2, neighbors_ws.max_row + 1):
         for c in range(1, neighbors_ws.max_column + 1):
             neighbors_ws.cell(row=r, column=c).value = None
-    
-    # Write back: BGP ID first, then sorted rows
-    current_row = 2
-    if bgp_id_row:
-        for j, val in enumerate(bgp_id_row, start=1):
-            neighbors_ws.cell(row=current_row, column=j, value=val)
-        current_row += 1
-    
-    for row in other_rows:
+    for i, row in enumerate(rows, start=2):
         for j, val in enumerate(row, start=1):
-            neighbors_ws.cell(row=current_row, column=j, value=val)
-        current_row += 1
-    
-    print("✅ Neighbor sheet reordered (BGP ID kept at top).")
+            neighbors_ws.cell(row=i, column=j, value=val)
+    print("✅ Neighbor sheet reordered.")
 except Exception as e:
     print(f"⚠️ Sorting skipped: {e}")
 
 
 # ==============================
-# Step 11: Save workbook
+# Step 9: Save workbook
 # ==============================
 wb.save(input_file)
 print(f"\n📊 Results, Neighbors, and Interfaces saved in '{input_file}'")

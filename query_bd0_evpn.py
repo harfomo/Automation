@@ -19,24 +19,6 @@ default_username = "NCMSOLK"
 default_password = "mhb5N2Ap"
 global_connect_timeout = 15
 
-def test_credentials(device_ip, device_type, username, password):
-    """Test if credentials work on a device."""
-    try:
-        print(f"  🔐 Testing credentials on {device_ip}...")
-        conn = ConnectHandler(
-            device_type=device_type,
-            ip=device_ip,
-            username=username,
-            password=password,
-            timeout=global_connect_timeout
-        )
-        conn.disconnect()
-        print(f"  ✅ Credentials work on {device_ip}")
-        return True
-    except Exception as e:
-        print(f"  ⚠️ Credentials failed on {device_ip}: {e}")
-        return False
-
 def main():
     # Check if Excel file exists
     if not os.path.exists(input_file):
@@ -56,50 +38,23 @@ def main():
         print("❌ 'Neighbors' sheet not found in workbook.")
         sys.exit(1)
     
-    if "Results" not in wb.sheetnames:
-        print("❌ 'Results' sheet not found in workbook.")
-        sys.exit(1)
-    
     devices_ws = wb["Devices"]
     neighbors_ws = wb["Neighbors"]
-    results_ws = wb["Results"]
     
-    # Find BD0 and B01 devices
+    # Find BD0 device
     bd0_device = None
-    b01_device = None
     
-    print("\n🔍 Searching for BD0 and B01 devices...")
+    print("\n🔍 Searching for BD0 device...")
     for row in devices_ws.iter_rows(min_row=2, values_only=True):
         if row and row[0]:
             if "BD0" in row[0]:
                 bd0_device = {"hostname": row[0], "ip": row[1], "device_type": "cisco_nxos"}
                 print(f"✅ Found BD0 device: {bd0_device['hostname']} ({bd0_device['ip']})")
-            elif "B01" in row[0]:
-                b01_device = {"hostname": row[0], "ip": row[1], "device_type": "cisco_nxos"}
-                print(f"✅ Found B01 device: {b01_device['hostname']} ({b01_device['ip']})")
+                break
     
     if not bd0_device:
         print("❌ No device with 'BD0' in hostname found.")
         sys.exit(1)
-    
-    # Test credentials on B01 first if it exists
-    credentials_username = default_username
-    credentials_password = default_password
-    
-    if b01_device:
-        print("\n🔐 Testing default credentials on B01...")
-        if not test_credentials(b01_device["ip"], b01_device["device_type"], 
-                               credentials_username, credentials_password):
-            print("⚠️ Default credentials don't work on B01.")
-            print("⚠️ Please enter your credentials:")
-            credentials_username = input("Enter username: ")
-            credentials_password = getpass.getpass("Enter password: ")
-            print(f"\n🔐 Testing provided credentials on B01...")
-            if not test_credentials(b01_device["ip"], b01_device["device_type"],
-                                   credentials_username, credentials_password):
-                print("❌ Provided credentials also failed on B01.")
-                print("⚠️ Continuing with BD0 queries only (B01 will be skipped)")
-                b01_device = None  # Skip B01 if credentials don't work
     
     # Find B06 and B07 devices and their RR-2-PEER IPs
     print("\n🔍 Searching for RR-2-PEER IPs from iBGP-TO- neighbors...")
@@ -142,54 +97,6 @@ def main():
         print(f"   B07: {'✅' if b07_rr2_ip else '❌ Not found'}")
         sys.exit(1)
     
-    # Query B01 for BGP AS number
-    bgp_as_number = None
-    if b01_device:
-        print("\n" + "="*70)
-        print("🔍 QUERYING B01 DEVICE FOR BGP AS NUMBER")
-        print("="*70)
-        print(f"B01 Device: {b01_device['hostname']} ({b01_device['ip']})")
-        
-        try:
-            print(f"\n🔗 Connecting to B01...")
-            # Use already tested credentials
-            conn_b01 = ConnectHandler(
-                device_type=b01_device["device_type"],
-                ip=b01_device["ip"],
-                username=credentials_username,
-                password=credentials_password,
-                timeout=global_connect_timeout
-            )
-            print("✅ Connected to B01!")
-            
-            # Get BGP AS number
-            print("\n  ▶ Running: sh run bgp | i \"router bgp\"")
-            try:
-                output = conn_b01.send_command("sh run bgp | i \"router bgp\"", read_timeout=30)
-                
-                # Parse BGP AS number from output
-                match = re.search(r'router\s+bgp\s+(\d+)', output, re.IGNORECASE)
-                
-                if match:
-                    bgp_as_number = match.group(1)
-                    print(f"    ✅ Found BGP AS Number: {bgp_as_number}")
-                else:
-                    print(f"    ⚠️ Could not parse BGP AS number from output: {output}")
-                    bgp_as_number = "ERROR"
-                
-            except Exception as e:
-                print(f"    ❌ Command failed: {e}")
-                bgp_as_number = "ERROR"
-            
-            conn_b01.disconnect()
-            print("\n✅ B01 BGP AS query completed!")
-            
-        except Exception as e:
-            print(f"❌ Failed to connect to B01: {e}")
-            bgp_as_number = None
-    else:
-        print("\n⚠️ No B01 device found - skipping BGP AS number query")
-    
     # Build commands
     commands = [
         f"show bgp l2vpn evpn rd {b07_rr2_ip}:1 | i prefixes",
@@ -212,9 +119,8 @@ def main():
     # Connect to BD0 device
     print(f"\n🔗 Connecting to {bd0_device['hostname']} ({bd0_device['ip']})...")
     
-    # Use tested credentials (same as B01 if it was tested, or defaults)
-    bd0_username = credentials_username
-    bd0_password = credentials_password
+    bd0_username = default_username
+    bd0_password = default_password
     
     try:
         connection = ConnectHandler(
@@ -309,23 +215,6 @@ def main():
         ])
         print(f"  ✅ Added: {result['description']} - {result['paths']} paths")
     
-    # Insert BGP AS Number at top of Neighbors sheet
-    if bgp_as_number:
-        try:
-            print(f"\n📝 Inserting BGP AS Number ({bgp_as_number}) at top of Neighbors sheet...")
-            # Insert a new row at position 2 (right after header)
-            neighbors_ws.insert_rows(2)
-            # Add BGP ID data in the new row
-            neighbors_ws.cell(row=2, column=1, value=b01_device["ip"] if b01_device else "")  # Device IP
-            neighbors_ws.cell(row=2, column=2, value="BGP ID")  # Description
-            neighbors_ws.cell(row=2, column=3, value=bgp_as_number)  # BGP AS Number
-            # Leave other columns empty
-            for col in range(4, 8):
-                neighbors_ws.cell(row=2, column=col, value="")
-            print("✅ BGP ID inserted at top of Neighbors sheet")
-        except Exception as e:
-            print(f"⚠️ Failed to insert BGP ID: {e}")
-    
     # Save workbook
     wb.save(input_file)
     print(f"\n💾 Workbook saved: {input_file}")
@@ -333,11 +222,6 @@ def main():
     
     # Print summary
     print("\n" + "="*60)
-    if bgp_as_number:
-        print("BGP AS NUMBER")
-        print("="*60)
-        print(f"BGP AS: {bgp_as_number}")
-        print("="*60)
     print("SUMMARY OF EVPN ROUTES")
     print("="*60)
     for result in results:
