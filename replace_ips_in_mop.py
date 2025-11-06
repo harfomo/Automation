@@ -150,16 +150,23 @@ def replace_ip_in_text(text, ip, description):
     
     return text, (text != original_text)
 
-def replace_route_counts_in_next_column(next_cell_value, description, route_type):
+def replace_route_counts_in_next_column(next_cell_value, description, route_type, is_evpn=False):
     """
     Replace route counts in the next column with description-based labels.
-    For advertised-routes: <number> routes -> {description}_adv_routes routes
-    For received-routes: <number> routes -> {description}_recv_routes routes
+    
+    For regular BGP routes:
+      - advertised-routes: <number> routes -> {description}_adv_routes routes
+      - received-routes: <number> routes -> {description}_recv_routes routes
+    
+    For EVPN routes:
+      - advertised-routes evpn: (entire cell content) -> {description}_BGP_EVPN_Prefix_Adv
+      - received-routes evpn: (entire cell content) -> {description}_BGP_EVPN_Prefix_Recv
     
     Args:
         next_cell_value: Value of the next column cell
         description: The neighbor description to use
         route_type: 'advertised' or 'received'
+        is_evpn: True if this is an EVPN route command
     
     Returns (new_text, was_replaced)
     """
@@ -169,6 +176,24 @@ def replace_route_counts_in_next_column(next_cell_value, description, route_type
     text = str(next_cell_value).strip()
     original_text = text
     
+    # Handle EVPN routes - replace entire cell content with simple label
+    if is_evpn:
+        # EVPN routes have complex format like:
+        # "Auto-Disc-0 routes, IP-Prefix-2471 routes, IPv6-Prefix-8884 routes"
+        # Replace entire content with description-based label
+        if route_type == 'advertised':
+            new_text = f"{description}_BGP_EVPN_Prefix_Adv"
+        elif route_type == 'received':
+            new_text = f"{description}_BGP_EVPN_Prefix_Recv"
+        else:
+            return text, False
+        
+        # Only replace if there's actually content to replace
+        if text and text.lower() not in ['none', 'n/a', '-', 'null']:
+            return new_text, True
+        return text, False
+    
+    # Handle regular BGP routes - match specific pattern
     # Pattern to match: optional whitespace, digits, optional whitespace, "routes"
     # Examples: "311 routes", "  500 routes  ", "123routes"
     pattern = re.compile(r'^\s*(\d+)\s*(routes?)\s*$', re.IGNORECASE)
@@ -227,8 +252,17 @@ for sheet_name in mop_wb.sheetnames:
             if descriptions_used:
                 description = descriptions_used[0]
                 route_type = None
+                is_evpn = False
                 
-                if 'advertised-routes' in cell_value.lower():
+                # Check for EVPN routes first (more specific)
+                if 'advertised-routes' in cell_value.lower() and 'evpn' in cell_value.lower():
+                    route_type = 'advertised'
+                    is_evpn = True
+                elif 'received-routes' in cell_value.lower() and 'evpn' in cell_value.lower():
+                    route_type = 'received'
+                    is_evpn = True
+                # Then check for regular BGP routes
+                elif 'advertised-routes' in cell_value.lower():
                     route_type = 'advertised'
                 elif 'received-routes' in cell_value.lower():
                     route_type = 'received'
@@ -238,7 +272,7 @@ for sheet_name in mop_wb.sheetnames:
                     next_cell = row_cells[cell_idx + 1]
                     if next_cell.value is not None:
                         new_next_value, next_cell_modified = replace_route_counts_in_next_column(
-                            next_cell.value, description, route_type
+                            next_cell.value, description, route_type, is_evpn
                         )
                         if next_cell_modified:
                             next_cell.value = new_next_value
