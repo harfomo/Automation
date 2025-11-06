@@ -188,34 +188,41 @@ def replace_ip_in_text(text, ip, description):
     
     return text, (text != original_text)
 
-def replace_route_counts(text, descriptions_used):
+def replace_route_counts_in_next_column(next_cell_value, description, route_type):
     """
-    Replace route counts with description-based labels.
+    Replace route counts in the next column with description-based labels.
     For advertised-routes: <number> routes -> {description}_adv_routes routes
     For received-routes: <number> routes -> {description}_recv_routes routes
+    
+    Args:
+        next_cell_value: Value of the next column cell
+        description: The neighbor description to use
+        route_type: 'advertised' or 'received'
+    
     Returns (new_text, was_replaced)
     """
-    if not descriptions_used:
-        return text, False
+    if not next_cell_value or not description:
+        return next_cell_value, False
     
+    text = str(next_cell_value).strip()
     original_text = text
     
-    # Use the first description found (in case multiple IPs were replaced)
-    description = descriptions_used[0]
+    # Pattern to match: optional whitespace, digits, optional whitespace, "routes"
+    # Examples: "311 routes", "  500 routes  ", "123routes"
+    pattern = re.compile(r'^\s*(\d+)\s*(routes?)\s*$', re.IGNORECASE)
+    match = pattern.match(text)
     
-    # Check if line contains advertised-routes or received-routes
-    if 'advertised-routes' in text.lower():
-        # Replace pattern: <number> routes with {description}_adv_routes routes
-        # Match: spaces/tabs followed by digits followed by spaces and "routes"
-        pattern = re.compile(r'(\s+)(\d+)(\s+routes)', re.IGNORECASE)
-        text = pattern.sub(rf'\1{description}_adv_routes\3', text)
+    if match:
+        if route_type == 'advertised':
+            new_text = f"{description}_adv_routes routes"
+        elif route_type == 'received':
+            new_text = f"{description}_recv_routes routes"
+        else:
+            return text, False
+        
+        return new_text, True
     
-    elif 'received-routes' in text.lower():
-        # Replace pattern: <number> routes with {description}_recv_routes routes
-        pattern = re.compile(r'(\s+)(\d+)(\s+routes)', re.IGNORECASE)
-        text = pattern.sub(rf'\1{description}_recv_routes\3', text)
-    
-    return text, (text != original_text)
+    return text, False
 
 # =========================================================
 # Load MOPtemp.xlsx and search/replace
@@ -249,7 +256,10 @@ for sheet_name in sheets_to_process:
     sheet_replacements = 0
     
     for row in sheet.iter_rows():
-        for cell in row:
+        # Convert row to list so we can access cells by index
+        row_cells = list(row)
+        
+        for cell_idx, cell in enumerate(row_cells):
             if cell.value is None:
                 continue
             
@@ -266,12 +276,32 @@ for sheet_name in sheets_to_process:
                     replaced_ips.append((ip, description))
                     descriptions_used.append(description)
             
-            # Step 2: Replace route counts if IPs were replaced and line has advertised/received-routes
+            # Step 2: Check if this cell has advertised-routes or received-routes
+            # If yes, replace route count in the NEXT column
             route_count_replaced = False
+            next_cell_modified = False
+            next_cell_coord = None
             if descriptions_used:
-                new_value, route_count_replaced = replace_route_counts(cell_value, descriptions_used)
-                if route_count_replaced:
-                    cell_value = new_value
+                description = descriptions_used[0]
+                route_type = None
+                
+                if 'advertised-routes' in cell_value.lower():
+                    route_type = 'advertised'
+                elif 'received-routes' in cell_value.lower():
+                    route_type = 'received'
+                
+                # If we found a route command, check the next column
+                if route_type and cell_idx + 1 < len(row_cells):
+                    next_cell = row_cells[cell_idx + 1]
+                    if next_cell.value is not None:
+                        new_next_value, next_cell_modified = replace_route_counts_in_next_column(
+                            next_cell.value, description, route_type
+                        )
+                        if next_cell_modified:
+                            if not args.preview:
+                                next_cell.value = new_next_value
+                            route_count_replaced = True
+                            next_cell_coord = next_cell.coordinate
             
             # If the value changed, update the cell
             if cell_value != original_value:
@@ -287,7 +317,8 @@ for sheet_name in sheets_to_process:
                     'original': original_value,
                     'new': cell_value,
                     'replacements': replaced_ips,
-                    'route_count_replaced': route_count_replaced
+                    'route_count_replaced': route_count_replaced,
+                    'next_cell_coord': next_cell_coord
                 }
                 changes_log.append(change_info)
                 
@@ -298,8 +329,8 @@ for sheet_name in sheets_to_process:
                     print(f"      After:  {cell_value[:70]}{'...' if len(cell_value) > 70 else ''}")
                     for ip, desc in replaced_ips:
                         print(f"      • Replaced IP: {ip} → {desc}")
-                    if route_count_replaced:
-                        print(f"      • Replaced route count with description-based label")
+                    if route_count_replaced and next_cell_coord:
+                        print(f"      • Replaced route count in next column ({next_cell_coord})")
     
     if sheet_replacements > 0:
         status = "Would make" if args.preview else "Made"
@@ -344,8 +375,8 @@ if replacement_count > 0 and args.verbose:
         print(f"   Original: {change['original'][:60]}{'...' if len(change['original']) > 60 else ''}")
         print(f"   Updated:  {change['new'][:60]}{'...' if len(change['new']) > 60 else ''}")
         print(f"   Replaced: {', '.join([f'{ip}→{desc}' for ip, desc in change['replacements']])}")
-        if change.get('route_count_replaced'):
-            print(f"   Route count replaced with description-based label")
+        if change.get('route_count_replaced') and change.get('next_cell_coord'):
+            print(f"   Route count replaced in next column ({change['next_cell_coord']})")
 
 if not args.preview and not args.overwrite:
     print(f"\n💡 Tip: Review '{os.path.basename(output_file)}' and if satisfied,")
