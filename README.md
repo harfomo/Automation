@@ -43,7 +43,8 @@ Simple script to replace neighbor IPs with descriptions in MOP templates.
 **Features:**
 - Reads IP → Description mappings from `network_inputs.xlsx` (Neighbors sheet)
 - Searches and replaces IPs in all sheets of `MOPtemp.xlsx`
-- Replaces route counts in advertised-routes and received-routes commands
+- Replaces route counts in regular BGP advertised-routes and received-routes commands
+- Replaces EVPN route information with simplified description-based labels
 - Creates `MOPtemp_updated.xlsx` (preserves original)
 
 **Requirements:**
@@ -151,6 +152,8 @@ This processes `MOPtemp.xlsx` and:
 ```
 
 ### Route Count Replacement (in Next Column)
+
+#### Regular BGP Routes
 **Before:**
 ```
 Column A: /show router 1 bgp neighbor 10.118.49.117 advertised-routes brief
@@ -163,7 +166,23 @@ Column A: /show router 1 bgp neighbor RAN_EBGP_VXLAN_V4 advertised-routes brief
 Column B: RAN_EBGP_VXLAN_V4_adv_routes routes
 ```
 
-**Note:** The route count is in a **separate column** (next cell in the same row), not in the same cell as the command.
+#### EVPN Routes
+**Before:**
+```
+Column A: /show router bgp neighbor 172.31.6.0 advertised-routes evpn
+Column B: Auto-Disc-0 routes, IP-Prefix-2471 routes, IPv6-Prefix-8884 routes
+```
+
+**After:**
+```
+Column A: /show router bgp neighbor iBGP-TO-NWCSDEBGB06 advertised-routes evpn
+Column B: iBGP-TO-NWCSDEBGB06_BGP_EVPN_Prefix_Adv
+```
+
+**Note:** 
+- The route count/information is in a **separate column** (next cell in the same row)
+- For **regular BGP routes**: Replaces number pattern (e.g., "311 routes" → "{description}_adv_routes routes")
+- For **EVPN routes**: Replaces entire cell content with simplified label
 
 ---
 
