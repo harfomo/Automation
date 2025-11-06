@@ -6,54 +6,59 @@ import re
 # Configuration
 # =========================================================
 script_dir = os.path.dirname(os.path.abspath(__file__))
+network_inputs_file = os.path.join(script_dir, "network_inputs.xlsx")
 mop_temp_file = os.path.join(script_dir, "MOPtemp.xlsx")
 output_file = os.path.join(script_dir, "MOPtemp_updated.xlsx")
 
 # =========================================================
 # Validation
 # =========================================================
+if not os.path.exists(network_inputs_file):
+    print(f"❌ Error: '{network_inputs_file}' not found!")
+    print("   Please run the network_device_collector.py script first.")
+    raise SystemExit
+
 if not os.path.exists(mop_temp_file):
     print(f"❌ Error: '{mop_temp_file}' not found!")
     print("   Please ensure MOPtemp.xlsx exists in the script directory.")
     raise SystemExit
 
 # =========================================================
-# Load MOPtemp.xlsx
+# Load network_inputs.xlsx and build IP -> Description mapping
 # =========================================================
-print(f"📖 Loading {mop_temp_file}...")
-mop_wb = load_workbook(mop_temp_file)
+print("📖 Loading network_inputs.xlsx...")
+network_wb = load_workbook(network_inputs_file, data_only=True)
 
-if "Neighbors" not in mop_wb.sheetnames:
-    print("❌ Error: 'Neighbors' sheet not found in MOPtemp.xlsx")
-    print(f"   Available sheets: {', '.join(mop_wb.sheetnames)}")
+if "Neighbors" not in network_wb.sheetnames:
+    print("❌ Error: 'Neighbors' sheet not found in network_inputs.xlsx")
     raise SystemExit
 
-neighbors_sheet = mop_wb["Neighbors"]
+neighbors_sheet = network_wb["Neighbors"]
 
-# =========================================================
-# Build IP -> Description mapping from Neighbors sheet
-# =========================================================
+# Build mapping: Neighbor IP -> Neighbor Description
 ip_to_description = {}
 replacement_count = 0
 
-print("🔍 Building IP to Description mapping from Neighbors sheet...")
-print(f"   Reading from sheet: 'Neighbors'")
+print("🔍 Building IP to Description mapping from network_inputs.xlsx Neighbors sheet...")
 
 # Try to find the header row to determine column positions
 header_row = None
 neighbor_desc_col = None
 neighbor_ip_col = None
+device_ip_col = None
 
 for row_idx, row in enumerate(neighbors_sheet.iter_rows(min_row=1, max_row=10, values_only=True), start=1):
     if row:
-        # Look for header indicators
         for col_idx, cell_value in enumerate(row):
             if cell_value:
                 cell_str = str(cell_value).strip().lower()
-                if 'neighbor description' in cell_str or 'description' in cell_str:
+                if 'device ip' in cell_str:
+                    device_ip_col = col_idx
+                    header_row = row_idx
+                elif 'neighbor description' in cell_str or 'description' in cell_str:
                     neighbor_desc_col = col_idx
                     header_row = row_idx
-                if 'neighbor ip' in cell_str or ('ip' in cell_str and 'device' not in cell_str):
+                elif 'neighbor ip' in cell_str or (cell_str == 'neighbor ip'):
                     neighbor_ip_col = col_idx
                     header_row = row_idx
         
@@ -63,13 +68,17 @@ for row_idx, row in enumerate(neighbors_sheet.iter_rows(min_row=1, max_row=10, v
 # Default to standard layout if headers not found
 if neighbor_desc_col is None or neighbor_ip_col is None:
     print("   ⚠️  Could not auto-detect columns, using default layout:")
+    print("      Column A (index 0) = Device IP")
     print("      Column B (index 1) = Neighbor Description")
     print("      Column C (index 2) = Neighbor IP")
-    neighbor_desc_col = 1  # Column B (0-indexed)
-    neighbor_ip_col = 2    # Column C (0-indexed)
+    device_ip_col = 0
+    neighbor_desc_col = 1
+    neighbor_ip_col = 2
     header_row = 1
 else:
     print(f"   ✅ Auto-detected columns:")
+    if device_ip_col is not None:
+        print(f"      Column {chr(65 + device_ip_col)} = Device IP")
     print(f"      Column {chr(65 + neighbor_desc_col)} = Neighbor Description")
     print(f"      Column {chr(65 + neighbor_ip_col)} = Neighbor IP")
 
@@ -78,16 +87,18 @@ for row in neighbors_sheet.iter_rows(min_row=header_row + 1, values_only=True):
     if not row or len(row) <= max(neighbor_desc_col, neighbor_ip_col):
         continue
     
-    neighbor_desc = row[neighbor_desc_col]
-    neighbor_ip = row[neighbor_ip_col]
+    neighbor_desc = row[neighbor_desc_col] if neighbor_desc_col < len(row) else None
+    neighbor_ip = row[neighbor_ip_col] if neighbor_ip_col < len(row) else None
     
     if neighbor_ip and neighbor_desc:
         neighbor_ip_str = str(neighbor_ip).strip()
         neighbor_desc_str = str(neighbor_desc).strip()
         
         # Skip empty or placeholder values
-        if neighbor_ip_str and neighbor_desc_str and neighbor_ip_str.lower() not in ['none', 'n/a', '-']:
-            ip_to_description[neighbor_ip_str] = neighbor_desc_str
+        if neighbor_ip_str and neighbor_desc_str and neighbor_ip_str.lower() not in ['none', 'n/a', '-', 'null']:
+            # Store mapping (if duplicate, keep first occurrence)
+            if neighbor_ip_str not in ip_to_description:
+                ip_to_description[neighbor_ip_str] = neighbor_desc_str
 
 print(f"✅ Found {len(ip_to_description)} unique Neighbor IP -> Description mappings")
 
@@ -101,6 +112,9 @@ for i, (ip, desc) in enumerate(list(ip_to_description.items())[:10]):
     print(f"   {ip} → {desc}")
 if len(ip_to_description) > 10:
     print(f"   ... and {len(ip_to_description) - 10} more")
+
+# Close network_inputs workbook
+network_wb.close()
 
 # =========================================================
 # Helper function for smart IP replacement
@@ -137,16 +151,14 @@ def replace_ip_in_text(text, ip, description):
     return text, (text != original_text)
 
 # =========================================================
-# Search and replace in all sheets (except Neighbors)
+# Load MOPtemp.xlsx and search/replace
 # =========================================================
-print(f"\n📝 Searching and replacing IPs in all sheets (excluding 'Neighbors')...")
+print(f"\n📖 Loading {mop_temp_file}...")
+mop_wb = load_workbook(mop_temp_file)
+
+print(f"📝 Searching and replacing IPs in all sheets of MOPtemp.xlsx...")
 
 for sheet_name in mop_wb.sheetnames:
-    # Skip the Neighbors sheet to avoid modifying the source data
-    if sheet_name == "Neighbors":
-        print(f"\n  ⏭️  Skipping sheet: '{sheet_name}' (source data)")
-        continue
-    
     sheet = mop_wb[sheet_name]
     print(f"\n  🔎 Processing sheet: '{sheet_name}'")
     sheet_replacements = 0
@@ -165,7 +177,7 @@ for sheet_name in mop_wb.sheetnames:
                 new_value, was_replaced = replace_ip_in_text(cell_value, ip, description)
                 if was_replaced:
                     cell_value = new_value
-                    replaced_ips.append(ip)
+                    replaced_ips.append((ip, description))
             
             # If the value changed, update the cell
             if cell_value != original_value:
@@ -173,13 +185,18 @@ for sheet_name in mop_wb.sheetnames:
                 sheet_replacements += 1
                 replacement_count += 1
                 
-                print(f"    ✓ Cell {cell.coordinate}: {original_value[:50]}{'...' if len(original_value) > 50 else ''}")
-                print(f"      → {cell_value[:50]}{'...' if len(cell_value) > 50 else ''}")
-                for ip in replaced_ips:
-                    print(f"      • Replaced: {ip} → {ip_to_description[ip]}")
+                # Show details for first few replacements per sheet
+                if sheet_replacements <= 5:
+                    print(f"    ✓ Cell {cell.coordinate}:")
+                    print(f"      Before: {original_value[:70]}{'...' if len(original_value) > 70 else ''}")
+                    print(f"      After:  {cell_value[:70]}{'...' if len(cell_value) > 70 else ''}")
+                    for ip, desc in replaced_ips:
+                        print(f"      • Replaced: {ip} → {desc}")
     
     if sheet_replacements > 0:
         print(f"  ✅ Made {sheet_replacements} replacement(s) in '{sheet_name}'")
+        if sheet_replacements > 5:
+            print(f"     (showing first 5 replacements)")
     else:
         print(f"  ℹ️  No replacements needed in '{sheet_name}'")
 
@@ -195,7 +212,7 @@ print(f"="*60)
 print(f"✅ Script completed successfully!")
 print(f"📊 Total replacements made: {replacement_count}")
 print(f"📁 Updated file saved as: {output_file}")
-print(f"📋 Sheets processed: {len([s for s in mop_wb.sheetnames if s != 'Neighbors'])}")
+print(f"📋 Sheets processed: {len(mop_wb.sheetnames)}")
 print(f"🔗 IP mappings used: {len(ip_to_description)}")
 print(f"\n💡 Tip: Review '{os.path.basename(output_file)}' and if satisfied,")
-print(f"         you can rename it to 'MOPtemp.xlsx' or replace the original file.")
+print(f"         you can rename it to 'MOPtemp.xlsx' to replace the original file.")
