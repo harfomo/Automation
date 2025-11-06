@@ -150,16 +150,20 @@ This processes `MOPtemp.xlsx` and:
 /show router 1 bgp neighbor RAN_EBGP_VXLAN_V4 advertised-routes brief
 ```
 
-### Route Count Replacement
+### Route Count Replacement (in Next Column)
 **Before:**
 ```
-/show router 1 bgp neighbor 10.118.49.117 advertised-routes brief | match "Routes :"     311 routes
+Column A: /show router 1 bgp neighbor 10.118.49.117 advertised-routes brief
+Column B: 311 routes
 ```
 
 **After:**
 ```
-/show router 1 bgp neighbor RAN_EBGP_VXLAN_V4 advertised-routes brief | match "Routes :"     RAN_EBGP_VXLAN_V4_adv_routes routes
+Column A: /show router 1 bgp neighbor RAN_EBGP_VXLAN_V4 advertised-routes brief
+Column B: RAN_EBGP_VXLAN_V4_adv_routes routes
 ```
+
+**Note:** The route count is in a **separate column** (next cell in the same row), not in the same cell as the command.
 
 ---
 
