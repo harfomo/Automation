@@ -207,6 +207,11 @@ nokia_manual_creds = None  # tuple of (username, password), set after first manu
 nxos_manual_creds = None   # tuple of (username, password), set after first prompt
 proxy_manual_creds = None  # tuple of (username, password) for jump server, set after first prompt
 
+# Flags to track if default credentials have failed (to skip extra 2FA prompts)
+nokia_default_failed = False
+cisco_default_failed = False
+proxy_default_failed = False
+
 # =========================================================
 # Shared helpers
 # =========================================================
@@ -418,21 +423,26 @@ for device in devices:
     # Try credentials in order: default → cached manual → prompt for new manual
     connection = None
     
-    # Attempt 1: Try default credentials
-    try:
-        print(f"   🔐 Trying default TACACS credentials...")
-        connection = ConnectHandler(
-            device_type=device["device_type"],
-            ip=device["ip"],
-            username=default_username,
-            password=default_password,
-            timeout=global_connect_timeout
-        )
-        print(f"✅ Connected to {device['ip']} with default credentials")
-    except Exception as e:
-        print(f"   ⚠️ Default credentials failed: {e}")
-        
-        # Attempt 2: Try cached manual credentials (if they exist)
+    # Attempt 1: Try default credentials (skip if already known to fail)
+    if not nokia_default_failed:
+        try:
+            print(f"   🔐 Trying default TACACS credentials...")
+            connection = ConnectHandler(
+                device_type=device["device_type"],
+                ip=device["ip"],
+                username=default_username,
+                password=default_password,
+                timeout=global_connect_timeout
+            )
+            print(f"✅ Connected to {device['ip']} with default credentials")
+        except Exception as e:
+            print(f"   ⚠️ Default credentials failed: {e}")
+            nokia_default_failed = True  # Skip default for remaining Nokia devices
+    else:
+        print(f"   ⏭️ Skipping default credentials (already failed on previous device)")
+    
+    # Attempt 2: Try cached manual credentials (if they exist)
+    if not connection:
         if nokia_manual_creds:
             try:
                 print(f"   🔐 Trying cached manual credentials...")
@@ -689,18 +699,22 @@ def connect_cisco_device(ip, device_type, proxy_ip=None):
     Connect to Cisco device (NX-OS or IOS-XR) with credential caching.
     
     Authentication flow:
-    1. Try default credentials
+    1. Try default credentials (skip if already known to fail)
     2. Try cached manual credentials (if available)
     3. Prompt for manual credentials (with 2FA support) and cache them
     
     If proxy_ip is provided, builds jump-server channel first (also with credential caching).
     Returns (connection, proxy_ssh_client) — proxy_ssh_client must be closed if not None.
     """
-    global nxos_manual_creds, proxy_manual_creds
+    global nxos_manual_creds, proxy_manual_creds, cisco_default_failed, proxy_default_failed
 
     # Decide which creds to try first for Cisco devices (NX-OS/IOS-XR)
     attempts = []
-    attempts.append(("default", default_username, default_password))
+    if not cisco_default_failed:
+        attempts.append(("default", default_username, default_password))
+    else:
+        print(f"   ⏭️ Skipping default credentials (already failed on previous device)")
+    
     if nxos_manual_creds:
         attempts.append(("manual_cached", nxos_manual_creds[0], nxos_manual_creds[1]))
 
@@ -710,9 +724,12 @@ def connect_cisco_device(ip, device_type, proxy_ip=None):
     for label, u, p in attempts:
         try:
             if proxy_ip:
-                # Try default proxy creds then cached
+                # Try default proxy creds then cached (skip default if already known to fail)
                 proxy_attempts = []
-                proxy_attempts.append(("proxy_default", default_proxy_username, default_proxy_password))
+                if not proxy_default_failed:
+                    proxy_attempts.append(("proxy_default", default_proxy_username, default_proxy_password))
+                else:
+                    print(f"   ⏭️ Skipping default jump-server credentials (already failed)")
                 if proxy_manual_creds:
                     proxy_attempts.append(("proxy_manual_cached", proxy_manual_creds[0], proxy_manual_creds[1]))
 
@@ -728,6 +745,9 @@ def connect_cisco_device(ip, device_type, proxy_ip=None):
                     except Exception as pe:
                         last_proxy_error = pe
                         print(f"   ⚠️ Jump-server {plabel} failed: {pe}")
+                        # Mark proxy default credentials as failed for subsequent attempts
+                        if plabel == "proxy_default":
+                            proxy_default_failed = True
 
                 if not proxy_connected:
                     # Prompt once for jump creds and cache
@@ -770,6 +790,9 @@ def connect_cisco_device(ip, device_type, proxy_ip=None):
         except Exception as e:
             last_error = e
             print(f"   ⚠️ Cisco {device_type} {label} auth failed on {ip}: {e}")
+            # Mark default credentials as failed for subsequent devices
+            if label == "default":
+                cisco_default_failed = True
             if proxy_client:
                 try:
                     proxy_client.close()
