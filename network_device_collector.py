@@ -33,10 +33,11 @@ if not os.path.exists(input_file):
     ws_devices.append(["Cilli_Hostname", "IP/Hostname", "Device_Type (optional)", "Proxy_IP", "Primary/Secondary/Primary Tab#/Secondary Tab#"])
     ws_devices.append(["NWCSDEBGB06", "2001:4888:a1f:6332:194:26:0:6", "nokia_sros_ssh", "", ""])
     ws_devices.append(["NWCSDEBGB07", "2001:4888:a1f:6332:194:26:0:7", "nokia_sros_ssh", "", ""])
-    # Example NX-OS rows (optional)
+    # Example Cisco NX-OS and IOS-XR rows (optional)
     ws_devices.append(["NWCSDEBGBD0", "2001:4888:a1f:6032:196:28:0:d0", "cisco_nxos", "", ""])   # BD0 (no proxy)
-    ws_devices.append(["NWCSDEBGB01", "1NWCSDEBGB01", "cisco_nxos", "198.226.102.37", ""])  # B01 via proxy
-    ws_devices.append(["NWCSDEBGB02", "1NWCSDEBGB02", "cisco_nxos", "198.226.102.37", ""])  # B02 via proxy
+    ws_devices.append(["NWCSDEBGB01", "1NWCSDEBGB01", "cisco_nxos", "198.226.102.37", ""])  # B01 via proxy (NX-OS)
+    ws_devices.append(["NWCSDEBGB02", "1NWCSDEBGB02", "cisco_nxos", "198.226.102.37", ""])  # B02 via proxy (NX-OS)
+    # For IOS-XR devices, use: cisco_ios_xr
     wb.save(input_file)
     print(f"✅ Template created: {input_file}")
     print("➡️ Fill in your devices, then re-run the script.")
@@ -128,6 +129,22 @@ if not sister_cilli:
     sister_cilli = "WMTPPAAA"
 
 print(f"🏢 Location codes: Primary={primary_cilli}, Sister={sister_cilli}")
+
+# =========================================================
+# Sort devices: Nokia first, then Cisco
+# =========================================================
+def device_sort_key(device):
+    """Sort devices by type: Nokia first, then Cisco"""
+    dtype = device.get("device_type", "")
+    if "nokia" in dtype.lower():
+        return 0
+    elif "cisco" in dtype.lower():
+        return 1
+    else:
+        return 2
+
+devices.sort(key=device_sort_key)
+print(f"📋 Processing order: Nokia devices first, then Cisco devices")
 
 # =========================================================
 # Prepare output sheets
@@ -613,7 +630,7 @@ wb.save(input_file)
 print(f"\n💾 Nokia phase saved: {input_file}")
 
 # =========================================================
-# Phase 2 — NX-OS: BD0 EVPN paths & B01 BGP-ID, with reusable jump-server
+# Phase 2 — Cisco (NX-OS/IOS-XR): BD0 EVPN paths & B01 BGP-ID, with reusable jump-server
 # =========================================================
 
 def open_proxy_channel(proxy_ip, proxy_username, proxy_password, target_ip, target_port=22):
@@ -631,15 +648,15 @@ def open_proxy_channel(proxy_ip, proxy_username, proxy_password, target_ip, targ
     chan = transport.open_channel("direct-tcpip", (target_ip, target_port), ("127.0.0.1", 0))
     return ssh_client, chan
 
-def connect_nxos_device(ip, device_type, proxy_ip=None):
+def connect_cisco_device(ip, device_type, proxy_ip=None):
     """
-    Connect to NX-OS. Try default creds first; on failure prompt once and reuse.
+    Connect to Cisco device (NX-OS or IOS-XR). Try default creds first; on failure prompt once and reuse.
     If proxy_ip is provided, build a jump-channel first (and reuse jump creds on demand).
     Returns (connection, proxy_ssh_client) — proxy_ssh_client must be closed if not None.
     """
     global nxos_manual_creds, proxy_manual_creds
 
-    # Decide which creds to try first for NX-OS
+    # Decide which creds to try first for Cisco devices (NX-OS/IOS-XR)
     attempts = []
     attempts.append(("default", default_username, default_password))
     if nxos_manual_creds:
@@ -685,7 +702,7 @@ def connect_nxos_device(ip, device_type, proxy_ip=None):
                         raise pe2
 
                 # With channel ready, connect Netmiko via sock
-                print(f"   🔗 Connecting to NX-OS {ip} through proxy {proxy_ip} using {label} creds ...")
+                print(f"   🔗 Connecting to Cisco {device_type} {ip} through proxy {proxy_ip} using {label} creds ...")
                 conn = ConnectHandler(
                     device_type=device_type,
                     ip=ip,
@@ -695,7 +712,7 @@ def connect_nxos_device(ip, device_type, proxy_ip=None):
                     timeout=global_connect_timeout
                 )
             else:
-                print(f"   🔗 Connecting directly to NX-OS {ip} using {label} creds ...")
+                print(f"   🔗 Connecting directly to Cisco {device_type} {ip} using {label} creds ...")
                 conn = ConnectHandler(
                     device_type=device_type,
                     ip=ip,
@@ -703,12 +720,12 @@ def connect_nxos_device(ip, device_type, proxy_ip=None):
                     password=p,
                     timeout=global_connect_timeout
                 )
-            print(f"   ✅ Connected to NX-OS {ip} ({label}).")
+            print(f"   ✅ Connected to Cisco {device_type} {ip} ({label}).")
             # If we connected using manual cached (or newly prompted below), keep nxos_manual_creds as-is
             return conn, proxy_client
         except Exception as e:
             last_error = e
-            print(f"   ⚠️ NX-OS {label} auth failed on {ip}: {e}")
+            print(f"   ⚠️ Cisco {device_type} {label} auth failed on {ip}: {e}")
             if proxy_client:
                 try:
                     proxy_client.close()
@@ -717,9 +734,9 @@ def connect_nxos_device(ip, device_type, proxy_ip=None):
             proxy_client = None
 
     # If default and cached manual failed or not present: prompt once and retry
-    print(f"   ⚠️ Please enter NX-OS credentials for {ip}.")
-    u = input("   Enter NX-OS username: ")
-    p = getpass.getpass("   Enter NX-OS password: ")
+    print(f"   ⚠️ Please enter Cisco ({device_type}) credentials for {ip}.")
+    u = input(f"   Enter Cisco {device_type} username: ")
+    p = getpass.getpass(f"   Enter Cisco {device_type} password: ")
     nxos_manual_creds = (u, p)
 
     try:
@@ -751,10 +768,10 @@ def connect_nxos_device(ip, device_type, proxy_ip=None):
                 password=p,
                 timeout=global_connect_timeout
             )
-        print(f"   ✅ Connected to NX-OS {ip} (manual).")
+        print(f"   ✅ Connected to Cisco {device_type} {ip} (manual).")
         return conn, proxy_client
     except Exception as e2:
-        print(f"   ❌ NX-OS manual auth failed on {ip}: {e2}")
+        print(f"   ❌ Cisco {device_type} manual auth failed on {ip}: {e2}")
         if proxy_client:
             try:
                 proxy_client.close()
@@ -765,7 +782,9 @@ def connect_nxos_device(ip, device_type, proxy_ip=None):
 # ---- Helpers to find BD0 / B01 and pull RR-2-PEERs from Nokia results
 def find_device_by_suffix(suffix):
     for d in devices:
-        if d["device_type"] == "cisco_nxos" and d["hostname"] and d["hostname"].endswith(suffix):
+        device_type = d.get("device_type", "")
+        # Support both cisco_nxos and cisco_ios_xr
+        if device_type in ["cisco_nxos", "cisco_ios_xr"] and d["hostname"] and d["hostname"].endswith(suffix):
             return d
     return None
 
@@ -812,8 +831,8 @@ print(f"\n🔎 RR-2-PEER discovery: B06={b06_rr2 or 'N/A'}  |  B07={b07_rr2 or '
 
 # 1) BD0 EVPN path counts (if BD0 and both RRs present)
 if bd0 and b06_rr2 and b07_rr2:
-    print(f"\n🔗 Connecting to BD0 ({bd0['hostname']} @ {bd0['ip']}) — NX-OS EVPN path checks")
-    conn, proxy_client = connect_nxos_device(bd0["ip"], "cisco_nxos", proxy_ip=bd0.get("proxy_ip"))
+    print(f"\n🔗 Connecting to BD0 ({bd0['hostname']} @ {bd0['ip']}) — {bd0['device_type']} EVPN path checks")
+    conn, proxy_client = connect_cisco_device(bd0["ip"], bd0["device_type"], proxy_ip=bd0.get("proxy_ip"))
     if conn:
         try:
             commands = [
@@ -860,8 +879,8 @@ else:
 
 # 2) B01 BGP-ID (prepend a row under header)
 if b01:
-    print(f"\n🔗 Connecting to B01 ({b01['hostname']} @ {b01['ip']}) — NX-OS BGP ID read")
-    conn, proxy_client = connect_nxos_device(b01["ip"], "cisco_nxos", proxy_ip=b01.get("proxy_ip"))
+    print(f"\n🔗 Connecting to B01 ({b01['hostname']} @ {b01['ip']}) — {b01['device_type']} BGP ID read")
+    conn, proxy_client = connect_cisco_device(b01["ip"], b01["device_type"], proxy_ip=b01.get("proxy_ip"))
     if conn:
         try:
             cmd = 'sh run bgp | i "router bgp"'
