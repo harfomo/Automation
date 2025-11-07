@@ -29,13 +29,13 @@ if not os.path.exists(input_file):
     wb = Workbook()
     ws_devices = wb.active
     ws_devices.title = "Devices"
-    # Cilli_Hostname first (used to detect device type), then IP, optional device type, and optional Proxy_IP (for NX-OS jump)
-    ws_devices.append(["Cilli_Hostname", "IP/Hostname", "Device_Type (optional)", "Proxy_IP"])
-    ws_devices.append(["NWCSDEBGB06", "2001:4888:a1f:6332:194:26:0:6", "nokia_sros_ssh", ""])
-    ws_devices.append(["NWCSDEBGB07", "2001:4888:a1f:6332:194:26:0:7", "nokia_sros_ssh", ""])
+    # Cilli_Hostname first (used to detect device type), then IP, optional device type, optional Proxy_IP, and role/tab columns
+    ws_devices.append(["Cilli_Hostname", "IP/Hostname", "Device_Type (optional)", "Proxy_IP", "Primary/Secondary", "Primary Tab#", "Secondary Tab#"])
+    ws_devices.append(["NWCSDEBGB06", "2001:4888:a1f:6332:194:26:0:6", "nokia_sros_ssh", "", "Primary", "1", ""])
+    ws_devices.append(["NWCSDEBGB07", "2001:4888:a1f:6332:194:26:0:7", "nokia_sros_ssh", "", "Secondary", "", "1"])
     # Example NX-OS rows (optional)
-    ws_devices.append(["NWCSDEBGBD0", "10.10.10.10", "cisco_nxos", ""])   # BD0 (no proxy)
-    ws_devices.append(["NWCSDEBGB01", "172.22.22.22", "cisco_nxos", "198.226.102.37"])  # B01 via proxy
+    ws_devices.append(["NWCSDEBGBD0", "10.10.10.10", "cisco_nxos", "", "Primary", "2", ""])   # BD0 (no proxy)
+    ws_devices.append(["NWCSDEBGB01", "172.22.22.22", "cisco_nxos", "198.226.102.37", "Secondary", "", "2"])  # B01 via proxy
     wb.save(input_file)
     print(f"✅ Template created: {input_file}")
     print("➡️ Fill in your devices, then re-run the script.")
@@ -58,6 +58,9 @@ for row in devices_ws.iter_rows(min_row=2, values_only=True):
     ip = row[1]
     dtype = row[2] if len(row) > 2 and row[2] else None
     proxy_ip = row[3] if len(row) > 3 and row[3] else None
+    primary_secondary = row[4] if len(row) > 4 and row[4] else None
+    primary_tab = row[5] if len(row) > 5 and row[5] else None
+    secondary_tab = row[6] if len(row) > 6 and row[6] else None
 
     # Heuristic: B06/B07 → Nokia; BD#/BM#/B4#/B2C/B2D/etc → Cisco; else fallback or explicit type
     if cilli and (cilli.endswith("B06") or cilli.endswith("B07")):
@@ -69,7 +72,15 @@ for row in devices_ws.iter_rows(min_row=2, values_only=True):
     else:
         device_type = "nokia_sros_ssh"
 
-    devices.append({"hostname": cilli, "ip": ip, "device_type": device_type, "proxy_ip": proxy_ip})
+    devices.append({
+        "hostname": cilli, 
+        "ip": ip, 
+        "device_type": device_type, 
+        "proxy_ip": proxy_ip,
+        "primary_secondary": primary_secondary,
+        "primary_tab": primary_tab,
+        "secondary_tab": secondary_tab
+    })
 
 # =========================================================
 # Prepare output sheets
