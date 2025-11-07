@@ -197,14 +197,14 @@ if not devices:
     print("❌ No devices found — please verify your Excel file.")
     raise SystemExit
 
-print("🔐 Nokia devices will use embedded TACACS credentials by default.")
+print("🔐 Devices will use embedded TACACS credentials by default.")
 print("   If authentication fails, you'll be prompted for credentials (with 2FA).")
-print("   Manual credentials will be cached and reused for other Nokia devices.")
+print("   Manual credentials will be cached and reused for ALL devices (Nokia & Cisco).")
 
 # Credential caching strategy:
 # Try defaults first; if fail, try cached manual creds; if none exist or fail, prompt once and reuse.
-nokia_manual_creds = None  # tuple of (username, password), set after first manual prompt (with 2FA)
-nxos_manual_creds = None   # tuple of (username, password), set after first prompt
+# UNIFIED: Same manual credentials work for both Nokia and Cisco devices (typically TACACS)
+manual_creds = None        # tuple of (username, password), shared across all device types
 proxy_manual_creds = None  # tuple of (username, password) for jump server, set after first prompt
 
 # Flags to track if default credentials have failed (to skip extra 2FA prompts)
@@ -443,14 +443,14 @@ for device in devices:
     
     # Attempt 2: Try cached manual credentials (if they exist)
     if not connection:
-        if nokia_manual_creds:
+        if manual_creds:
             try:
                 print(f"   🔐 Trying cached manual credentials...")
                 connection = ConnectHandler(
                     device_type=device["device_type"],
                     ip=device["ip"],
-                    username=nokia_manual_creds[0],
-                    password=nokia_manual_creds[1],
+                    username=manual_creds[0],
+                    password=manual_creds[1],
                     timeout=global_connect_timeout
                 )
                 print(f"✅ Connected to {device['ip']} with cached manual credentials")
@@ -473,9 +473,9 @@ for device in devices:
                     timeout=global_connect_timeout
                 )
                 print(f"✅ Connected to {device['ip']} with manual credentials")
-                # Cache these credentials for future Nokia devices
-                nokia_manual_creds = (manual_username, manual_password)
-                print(f"   💾 Manual credentials cached for reuse on other Nokia devices")
+                # Cache these credentials for ALL future devices (Nokia & Cisco)
+                manual_creds = (manual_username, manual_password)
+                print(f"   💾 Manual credentials cached for reuse on ALL devices")
             except Exception as e3:
                 print(f"❌ Manual credentials also failed for {device['ip']}: {e3}")
                 log_failure(device["ip"], f"All authentication attempts failed: {e3}")
@@ -706,7 +706,7 @@ def connect_cisco_device(ip, device_type, proxy_ip=None):
     If proxy_ip is provided, builds jump-server channel first (also with credential caching).
     Returns (connection, proxy_ssh_client) — proxy_ssh_client must be closed if not None.
     """
-    global nxos_manual_creds, proxy_manual_creds, cisco_default_failed, proxy_default_failed
+    global manual_creds, proxy_manual_creds, cisco_default_failed, proxy_default_failed
 
     # Decide which creds to try first for Cisco devices (NX-OS/IOS-XR)
     attempts = []
@@ -715,8 +715,8 @@ def connect_cisco_device(ip, device_type, proxy_ip=None):
     else:
         print(f"   ⏭️ Skipping default credentials (already failed on previous device)")
     
-    if nxos_manual_creds:
-        attempts.append(("manual_cached", nxos_manual_creds[0], nxos_manual_creds[1]))
+    if manual_creds:
+        attempts.append(("manual_cached", manual_creds[0], manual_creds[1]))
 
     proxy_client = None
     last_error = None
@@ -784,8 +784,8 @@ def connect_cisco_device(ip, device_type, proxy_ip=None):
                     password=p,
                     timeout=global_connect_timeout
                 )
-            print(f"   ✅ Connected to Cisco {device_type} {ip} ({label}).")
-            # If we connected using manual cached (or newly prompted below), keep nxos_manual_creds as-is
+            print(f"   ✅ Connected to {device_type} {ip} ({label}).")
+            # If we connected using manual cached (or newly prompted below), keep manual_creds as-is
             return conn, proxy_client
         except Exception as e:
             last_error = e
@@ -801,11 +801,11 @@ def connect_cisco_device(ip, device_type, proxy_ip=None):
             proxy_client = None
 
     # If default and cached manual failed or not present: prompt once and retry
-    print(f"   ⚠️ Please enter Cisco ({device_type}) credentials for {ip}.")
+    print(f"   ⚠️ Please enter credentials for {device_type} {ip}.")
     print(f"   Note: This may trigger 2FA push notification - approve it to continue.")
-    u = input(f"   Enter Cisco {device_type} username: ")
-    p = getpass.getpass(f"   Enter Cisco {device_type} password: ")
-    nxos_manual_creds = (u, p)
+    u = input(f"   Enter TACACS username: ")
+    p = getpass.getpass(f"   Enter TACACS password: ")
+    manual_creds = (u, p)
 
     try:
         if proxy_ip:
@@ -841,8 +841,8 @@ def connect_cisco_device(ip, device_type, proxy_ip=None):
                 password=p,
                 timeout=global_connect_timeout
             )
-        print(f"   ✅ Connected to Cisco {device_type} {ip} (manual).")
-        print(f"   💾 Manual credentials cached for reuse on other Cisco devices")
+        print(f"   ✅ Connected to {device_type} {ip} (manual).")
+        print(f"   💾 Manual credentials cached for reuse on ALL devices")
         return conn, proxy_client
     except Exception as e2:
         print(f"   ❌ Cisco {device_type} manual auth failed on {ip}: {e2}")
