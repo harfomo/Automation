@@ -208,10 +208,12 @@ Hardcoded in `network_device_collector.py`:
 ### network_inputs.xlsx
 
 **Devices Sheet:**
-| Cilli_Hostname | IP/Hostname | Device_Type (optional) | Proxy_IP |
-|----------------|-------------|------------------------|----------|
-| NWCSDEBGB06 | 2001:4888:a1f:6332:194:26:0:6 | nokia_sros_ssh | |
-| NWCSDEBGB01 | 172.22.22.22 | cisco_nxos | 198.226.102.37 |
+| Cilli_Hostname | IP/Hostname | Device_Type (optional) | Proxy_IP | Primary/Secondary | Primary Tab# | Secondary Tab# |
+|----------------|-------------|------------------------|----------|-------------------|--------------|----------------|
+| NWCSDEBGB06 | 2001:4888:a1f:6332:194:26:0:6 | nokia_sros_ssh | | Primary | 1 | |
+| NWCSDEBGB07 | 2001:4888:a1f:6332:194:26:0:7 | nokia_sros_ssh | | Secondary | | 1 |
+| NWCSDEBGBD0 | 10.10.10.10 | cisco_nxos | | Primary | 2 | |
+| NWCSDEBGB01 | 172.22.22.22 | cisco_nxos | 198.226.102.37 | Secondary | | 2 |
 
 **Neighbors Sheet:**
 | Device IP | Neighbor Description | Neighbor IP | No of advRoutes | No of received Routes | BGP EVPN IPv4/IPv6 Prefix (Adv) | BGP EVPN IPv4/IPv6 Prefix (Recv) |
