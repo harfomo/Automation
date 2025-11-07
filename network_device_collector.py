@@ -102,6 +102,34 @@ for row in devices_ws.iter_rows(min_row=2, values_only=True):
     })
 
 # =========================================================
+# Extract primary and sister location codes from Cilli_Hostname
+# =========================================================
+primary_cilli = None
+sister_cilli = None
+
+for device in devices:
+    cilli_hostname = device.get("hostname", "")
+    role = device.get("primary_secondary", "")
+    
+    if cilli_hostname and role:
+        # Extract location code by removing the last 3-4 characters (B06, B07, BD0, etc.)
+        # Example: NWCSDEBGB06 → NWCSDEBG, WMTPPAAAB07 → WMTPPAAA
+        location_code = re.sub(r'B\d+[A-Z]?$', '', cilli_hostname)
+        
+        if role and role.lower() == "primary":
+            primary_cilli = location_code
+        elif role and role.lower() == "secondary":
+            sister_cilli = location_code
+
+# Fallback to defaults if not found
+if not primary_cilli:
+    primary_cilli = "NWCSDEBG"
+if not sister_cilli:
+    sister_cilli = "WMTPPAAA"
+
+print(f"🏢 Location codes: Primary={primary_cilli}, Sister={sister_cilli}")
+
+# =========================================================
 # Prepare output sheets
 # =========================================================
 for name in ["Results", "Neighbors", "Interfaces"]:
@@ -413,7 +441,7 @@ for device in devices:
         '/show port detail | match "B17" post-lines 1',
         '/show port detail | match "B18" post-lines 1',
         '/show port detail | match "B2" post-lines 1',
-        'show lag description | match expression "(NWCSDEBG)|(WMTPPAAA)|(lag-1$)|(lag-2)|(lag-19$)|(lag-33$)" invert-match | match "(lag-)|(Bundle)" expression'
+        f'show lag description | match expression "({primary_cilli})|({sister_cilli})|(lag-1$)|(lag-2)|(lag-19$)|(lag-33$)" invert-match | match "(lag-)|(Bundle)" expression'
     ]
 
     # Stash outputs for parsers
