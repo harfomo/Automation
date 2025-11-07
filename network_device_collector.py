@@ -198,12 +198,14 @@ if not devices:
     raise SystemExit
 
 print("🔐 Nokia devices will use embedded TACACS credentials by default.")
-print("   If authentication fails, you'll be prompted for credentials per device.")
+print("   If authentication fails, you'll be prompted for credentials (with 2FA).")
+print("   Manual credentials will be cached and reused for other Nokia devices.")
 
-# Cisco auth strategy — per-device:
-# Try defaults first; if fail, prompt once and reuse that Cisco manual set for later devices.
-nxos_manual_creds = None  # tuple of (username, password), set after first prompt
-proxy_manual_creds = None # tuple of (username, password) for jump server, set after first prompt
+# Credential caching strategy:
+# Try defaults first; if fail, try cached manual creds; if none exist or fail, prompt once and reuse.
+nokia_manual_creds = None  # tuple of (username, password), set after first manual prompt (with 2FA)
+nxos_manual_creds = None   # tuple of (username, password), set after first prompt
+proxy_manual_creds = None  # tuple of (username, password) for jump server, set after first prompt
 
 # =========================================================
 # Shared helpers
@@ -413,8 +415,10 @@ for device in devices:
 
     print(f"\n🔗 Connecting to {device['ip']} ({device['hostname']}) — detected type: {device['device_type']}")
     
-    # Try default credentials first
+    # Try credentials in order: default → cached manual → prompt for new manual
     connection = None
+    
+    # Attempt 1: Try default credentials
     try:
         print(f"   🔐 Trying default TACACS credentials...")
         connection = ConnectHandler(
@@ -427,24 +431,45 @@ for device in devices:
         print(f"✅ Connected to {device['ip']} with default credentials")
     except Exception as e:
         print(f"   ⚠️ Default credentials failed: {e}")
-        # Prompt for manual credentials for this device
-        print(f"   Please enter credentials for {device['hostname']} ({device['ip']}):")
-        manual_username = input("   Enter TACACS username: ")
-        manual_password = getpass.getpass("   Enter TACACS password: ")
         
-        try:
-            connection = ConnectHandler(
-                device_type=device["device_type"],
-                ip=device["ip"],
-                username=manual_username,
-                password=manual_password,
-                timeout=global_connect_timeout
-            )
-            print(f"✅ Connected to {device['ip']} with manual credentials")
-        except Exception as e2:
-            print(f"❌ Manual credentials also failed for {device['ip']}: {e2}")
-            log_failure(device["ip"], f"Default and manual auth failed: {e2}")
-            continue
+        # Attempt 2: Try cached manual credentials (if they exist)
+        if nokia_manual_creds:
+            try:
+                print(f"   🔐 Trying cached manual credentials...")
+                connection = ConnectHandler(
+                    device_type=device["device_type"],
+                    ip=device["ip"],
+                    username=nokia_manual_creds[0],
+                    password=nokia_manual_creds[1],
+                    timeout=global_connect_timeout
+                )
+                print(f"✅ Connected to {device['ip']} with cached manual credentials")
+            except Exception as e2:
+                print(f"   ⚠️ Cached manual credentials also failed: {e2}")
+        
+        # Attempt 3: Prompt for new manual credentials if not connected yet
+        if not connection:
+            print(f"   Please enter credentials for {device['hostname']} ({device['ip']}):")
+            print(f"   Note: This may trigger 2FA push notification - approve it to continue.")
+            manual_username = input("   Enter TACACS username: ")
+            manual_password = getpass.getpass("   Enter TACACS password: ")
+            
+            try:
+                connection = ConnectHandler(
+                    device_type=device["device_type"],
+                    ip=device["ip"],
+                    username=manual_username,
+                    password=manual_password,
+                    timeout=global_connect_timeout
+                )
+                print(f"✅ Connected to {device['ip']} with manual credentials")
+                # Cache these credentials for future Nokia devices
+                nokia_manual_creds = (manual_username, manual_password)
+                print(f"   💾 Manual credentials cached for reuse on other Nokia devices")
+            except Exception as e3:
+                print(f"❌ Manual credentials also failed for {device['ip']}: {e3}")
+                log_failure(device["ip"], f"All authentication attempts failed: {e3}")
+                continue
     
     if not connection:
         print(f"❌ Could not establish connection to {device['ip']}")
