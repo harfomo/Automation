@@ -34,8 +34,9 @@ if not os.path.exists(input_file):
     ws_devices.append(["NWCSDEBGB06", "2001:4888:a1f:6332:194:26:0:6", "nokia_sros_ssh", "", ""])
     ws_devices.append(["NWCSDEBGB07", "2001:4888:a1f:6332:194:26:0:7", "nokia_sros_ssh", "", ""])
     # Example NX-OS rows (optional)
-    ws_devices.append(["NWCSDEBGBD0", "10.10.10.10", "cisco_nxos", "", ""])   # BD0 (no proxy)
-    ws_devices.append(["NWCSDEBGB01", "172.22.22.22", "cisco_nxos", "198.226.102.37", ""])  # B01 via proxy
+    ws_devices.append(["NWCSDEBGBD0", "2001:4888:a1f:6032:196:28:0:d0", "cisco_nxos", "", ""])   # BD0 (no proxy)
+    ws_devices.append(["NWCSDEBGB01", "1NWCSDEBGB01", "cisco_nxos", "198.226.102.37", ""])  # B01 via proxy
+    ws_devices.append(["NWCSDEBGB02", "1NWCSDEBGB02", "cisco_nxos", "198.226.102.37", ""])  # B02 via proxy
     wb.save(input_file)
     print(f"✅ Template created: {input_file}")
     print("➡️ Fill in your devices, then re-run the script.")
