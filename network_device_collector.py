@@ -82,15 +82,27 @@ for row in devices_ws.iter_rows(min_row=2, values_only=True):
                     else:
                         secondary_tab = tab_num
 
-    # Heuristic: B06/B07 → Nokia; BD#/BM#/B4#/B2C/B2D/etc → Cisco; else fallback or explicit type
-    if cilli and (cilli.endswith("B06") or cilli.endswith("B07")):
+    # Determine device type:
+    # 1. If Device_Type column is filled, use that (explicit override)
+    # 2. Otherwise, use heuristic based on hostname pattern
+    # 3. For cisco_ios_xr devices, MUST specify in Device_Type column
+    
+    if dtype:
+        # Explicit device type provided in Excel - use it
+        device_type = dtype
+    elif cilli and (cilli.endswith("B06") or cilli.endswith("B07")):
+        # Hostname pattern: B06/B07 → Nokia SROS
         device_type = "nokia_sros_ssh"
     elif cilli and re.search(r"B(D\d+|M\d+|4\d+|01|02|2C|2D|D0)$", cilli):
+        # Hostname pattern: BD#/BM#/B4#/B01/B02/etc → Cisco NX-OS
         device_type = "cisco_nxos"
-    elif dtype:
-        device_type = dtype
     else:
+        # Default to Nokia if no pattern matches
+        # NOTE: For cisco_ios_xr, you MUST specify it in Device_Type column!
         device_type = "nokia_sros_ssh"
+        if cilli:
+            print(f"⚠️ Warning: Could not auto-detect device type for {cilli}, defaulting to nokia_sros_ssh")
+            print(f"   If this is a Cisco device, please specify 'cisco_nxos' or 'cisco_ios_xr' in Device_Type column")
 
     devices.append({
         "hostname": cilli, 
