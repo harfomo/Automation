@@ -686,8 +686,14 @@ def open_proxy_channel(proxy_ip, proxy_username, proxy_password, target_ip, targ
 
 def connect_cisco_device(ip, device_type, proxy_ip=None):
     """
-    Connect to Cisco device (NX-OS or IOS-XR). Try default creds first; on failure prompt once and reuse.
-    If proxy_ip is provided, build a jump-channel first (and reuse jump creds on demand).
+    Connect to Cisco device (NX-OS or IOS-XR) with credential caching.
+    
+    Authentication flow:
+    1. Try default credentials
+    2. Try cached manual credentials (if available)
+    3. Prompt for manual credentials (with 2FA support) and cache them
+    
+    If proxy_ip is provided, builds jump-server channel first (also with credential caching).
     Returns (connection, proxy_ssh_client) — proxy_ssh_client must be closed if not None.
     """
     global nxos_manual_creds, proxy_manual_creds
@@ -726,12 +732,14 @@ def connect_cisco_device(ip, device_type, proxy_ip=None):
                 if not proxy_connected:
                     # Prompt once for jump creds and cache
                     print(f"   ⚠️ Default jump credentials failed for {proxy_ip}. Please enter jump-server credentials.")
+                    print(f"   Note: This may trigger 2FA push notification - approve it to continue.")
                     ju = input("   Enter Jump username: ")
                     jp = getpass.getpass("   Enter Jump password: ")
                     try:
                         proxy_client, chan = open_proxy_channel(proxy_ip, ju, jp, ip, 22)
                         print(f"   ✅ Jump-server channel established via {proxy_ip}.")
                         proxy_manual_creds = (ju, jp)
+                        print(f"   💾 Jump-server credentials cached for reuse")
                     except Exception as pe2:
                         print(f"   ❌ Jump-server authentication failed: {pe2}")
                         # no proxy => cannot proceed to device
@@ -771,6 +779,7 @@ def connect_cisco_device(ip, device_type, proxy_ip=None):
 
     # If default and cached manual failed or not present: prompt once and retry
     print(f"   ⚠️ Please enter Cisco ({device_type}) credentials for {ip}.")
+    print(f"   Note: This may trigger 2FA push notification - approve it to continue.")
     u = input(f"   Enter Cisco {device_type} username: ")
     p = getpass.getpass(f"   Enter Cisco {device_type} password: ")
     nxos_manual_creds = (u, p)
@@ -778,16 +787,21 @@ def connect_cisco_device(ip, device_type, proxy_ip=None):
     try:
         if proxy_ip:
             # ensure proxy is up with (possibly) cached or manual
+            proxy_was_cached = proxy_manual_creds is not None
             if not proxy_manual_creds:
                 print(f"   🔐 Enter jump-server credentials for {proxy_ip}.")
+                print(f"   Note: This may trigger 2FA push notification - approve it to continue.")
                 ju = input("   Enter Jump username: ")
                 jp = getpass.getpass("   Enter Jump password: ")
                 proxy_manual_creds = (ju, jp)
             else:
                 ju, jp = proxy_manual_creds
+                print(f"   🔐 Using cached jump-server credentials...")
 
             proxy_client, chan = open_proxy_channel(proxy_ip, ju, jp, ip, 22)
             print(f"   ✅ Jump-server channel established via {proxy_ip}.")
+            if not proxy_was_cached:
+                print(f"   💾 Jump-server credentials cached for reuse")
             conn = ConnectHandler(
                 device_type=device_type,
                 ip=ip,
@@ -805,6 +819,7 @@ def connect_cisco_device(ip, device_type, proxy_ip=None):
                 timeout=global_connect_timeout
             )
         print(f"   ✅ Connected to Cisco {device_type} {ip} (manual).")
+        print(f"   💾 Manual credentials cached for reuse on other Cisco devices")
         return conn, proxy_client
     except Exception as e2:
         print(f"   ❌ Cisco {device_type} manual auth failed on {ip}: {e2}")
