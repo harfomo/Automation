@@ -287,7 +287,7 @@ def _pair_desc_iface(lines, tag_regex, tag_prefix):
 def extract_bd_interfaces(output): return _pair_desc_iface(output.splitlines(), r"BD([0-9A-Z]+)", "BD")
 def extract_bm_interfaces(output): return _pair_desc_iface(output.splitlines(), r"BM(\d+)", "BM")
 def extract_b4_interfaces(output): return _pair_desc_iface(output.splitlines(), r"B4(\d+)", "B4")
-def extract_b2_interfaces(output): return _pair_desc_iface(output.splitlines(), r"B2(\d+)", "B2")
+def extract_b2_interfaces(output): return _pair_desc_iface(output.splitlines(), r"B2([0-9A-Z]+)", "B2")
 def extract_b_interfaces(output):  return _pair_desc_iface(output.splitlines(), r"B(\d+)",  "B")
 
 # Nokia router-id mappers and contexts
