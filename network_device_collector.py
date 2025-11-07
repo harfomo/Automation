@@ -29,13 +29,13 @@ if not os.path.exists(input_file):
     wb = Workbook()
     ws_devices = wb.active
     ws_devices.title = "Devices"
-    # Cilli_Hostname first (used to detect device type), then IP, optional device type, optional Proxy_IP, and role/tab columns
-    ws_devices.append(["Cilli_Hostname", "IP/Hostname", "Device_Type (optional)", "Proxy_IP", "Primary/Secondary", "Primary Tab#", "Secondary Tab#"])
-    ws_devices.append(["NWCSDEBGB06", "2001:4888:a1f:6332:194:26:0:6", "nokia_sros_ssh", "", "Primary", "1", ""])
-    ws_devices.append(["NWCSDEBGB07", "2001:4888:a1f:6332:194:26:0:7", "nokia_sros_ssh", "", "Secondary", "", "1"])
+    # Cilli_Hostname first (used to detect device type), then IP, optional device type, optional Proxy_IP, and role/tab column
+    ws_devices.append(["Cilli_Hostname", "IP/Hostname", "Device_Type (optional)", "Proxy_IP", "Primary/Secondary/Primary Tab#/Secondary Tab#"])
+    ws_devices.append(["NWCSDEBGB06", "2001:4888:a1f:6332:194:26:0:6", "nokia_sros_ssh", "", "Primary/1"])
+    ws_devices.append(["NWCSDEBGB07", "2001:4888:a1f:6332:194:26:0:7", "nokia_sros_ssh", "", "Secondary/1"])
     # Example NX-OS rows (optional)
-    ws_devices.append(["NWCSDEBGBD0", "10.10.10.10", "cisco_nxos", "", "Primary", "2", ""])   # BD0 (no proxy)
-    ws_devices.append(["NWCSDEBGB01", "172.22.22.22", "cisco_nxos", "198.226.102.37", "Secondary", "", "2"])  # B01 via proxy
+    ws_devices.append(["NWCSDEBGBD0", "10.10.10.10", "cisco_nxos", "", "Primary/2"])   # BD0 (no proxy)
+    ws_devices.append(["NWCSDEBGB01", "172.22.22.22", "cisco_nxos", "198.226.102.37", "Secondary/2"])  # B01 via proxy
     wb.save(input_file)
     print(f"✅ Template created: {input_file}")
     print("➡️ Fill in your devices, then re-run the script.")
@@ -58,9 +58,27 @@ for row in devices_ws.iter_rows(min_row=2, values_only=True):
     ip = row[1]
     dtype = row[2] if len(row) > 2 and row[2] else None
     proxy_ip = row[3] if len(row) > 3 and row[3] else None
-    primary_secondary = row[4] if len(row) > 4 and row[4] else None
-    primary_tab = row[5] if len(row) > 5 and row[5] else None
-    secondary_tab = row[6] if len(row) > 6 and row[6] else None
+    role_tab_info = row[4] if len(row) > 4 and row[4] else None
+    
+    # Parse the "Primary/Secondary/Primary Tab#/Secondary Tab#" column
+    # Format examples: "Primary/1", "Secondary/2", "Primary", "Secondary"
+    primary_secondary = None
+    primary_tab = None
+    secondary_tab = None
+    
+    if role_tab_info:
+        role_tab_str = str(role_tab_info).strip()
+        parts = role_tab_str.split("/")
+        if len(parts) >= 1:
+            role = parts[0].strip().lower()
+            if role in ["primary", "secondary"]:
+                primary_secondary = parts[0].strip()
+                if len(parts) >= 2 and parts[1].strip():
+                    tab_num = parts[1].strip()
+                    if role == "primary":
+                        primary_tab = tab_num
+                    else:
+                        secondary_tab = tab_num
 
     # Heuristic: B06/B07 → Nokia; BD#/BM#/B4#/B2C/B2D/etc → Cisco; else fallback or explicit type
     if cilli and (cilli.endswith("B06") or cilli.endswith("B07")):
