@@ -31,11 +31,11 @@ if not os.path.exists(input_file):
     ws_devices.title = "Devices"
     # Cilli_Hostname first (used to detect device type), then IP, optional device type, optional Proxy_IP, and role/tab column
     ws_devices.append(["Cilli_Hostname", "IP/Hostname", "Device_Type (optional)", "Proxy_IP", "Primary/Secondary/Primary Tab#/Secondary Tab#"])
-    ws_devices.append(["NWCSDEBGB06", "2001:4888:a1f:6332:194:26:0:6", "nokia_sros_ssh", "", "Primary/1"])
-    ws_devices.append(["NWCSDEBGB07", "2001:4888:a1f:6332:194:26:0:7", "nokia_sros_ssh", "", "Secondary/1"])
+    ws_devices.append(["NWCSDEBGB06", "2001:4888:a1f:6332:194:26:0:6", "nokia_sros_ssh", "", ""])
+    ws_devices.append(["NWCSDEBGB07", "2001:4888:a1f:6332:194:26:0:7", "nokia_sros_ssh", "", ""])
     # Example NX-OS rows (optional)
-    ws_devices.append(["NWCSDEBGBD0", "10.10.10.10", "cisco_nxos", "", "Primary/2"])   # BD0 (no proxy)
-    ws_devices.append(["NWCSDEBGB01", "172.22.22.22", "cisco_nxos", "198.226.102.37", "Secondary/2"])  # B01 via proxy
+    ws_devices.append(["NWCSDEBGBD0", "10.10.10.10", "cisco_nxos", "", ""])   # BD0 (no proxy)
+    ws_devices.append(["NWCSDEBGB01", "172.22.22.22", "cisco_nxos", "198.226.102.37", ""])  # B01 via proxy
     wb.save(input_file)
     print(f"✅ Template created: {input_file}")
     print("➡️ Fill in your devices, then re-run the script.")
