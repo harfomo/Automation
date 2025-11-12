@@ -172,15 +172,15 @@ interfaces_ws = wb.create_sheet("Interfaces")
 # Results: raw command output logs
 results_ws.append(["Device IP", "Command", "Output"])
 
-# Neighbors sheet header — keep existing layout
+# Neighbors sheet header — add Hostname as first column
 neighbors_ws.append([
-    "Device IP", "Neighbor Description", "Neighbor IP",
+    "Hostname", "Device IP", "Neighbor Description", "Neighbor IP",
     "No of advRoutes", "No of received Routes",
     "BGP EVPN IPv4/IPv6 Prefix (Adv)", "BGP EVPN IPv4/IPv6 Prefix (Recv)"
 ])
 
-# Interfaces: for BD/BM/B4/B2 and LAG thresholds
-interfaces_ws.append(["Device IP", "Interface Description", "Interface Name", "Threshold"])
+# Interfaces: for BD/BM/B4/B2 and LAG thresholds - add Hostname as first column
+interfaces_ws.append(["Hostname", "Device IP", "Interface Description", "Interface Name", "Threshold"])
 
 # =========================================================
 # Global Credentials & Timeouts
@@ -545,7 +545,7 @@ for device in devices:
         cpe_neighbors = extract_cpe_check_neighbors(cpe_output)
         wsn_mobile_router_id = detect_wsn_mobile_router_id_from_neighbors(cpe_neighbors)
         for desc, ip_addr in cpe_neighbors:
-            neighbors_ws.append([device["ip"], desc, ip_addr, "", "", "", ""])
+            neighbors_ws.append([device["hostname"], device["ip"], desc, ip_addr, "", "", "", ""])
 
     # Parse neighbors and collect BGP/EVPN route counts
     if display_output:
@@ -604,38 +604,38 @@ for device in devices:
                     m2 = re.search(r"Routes\s*:\s*(\d+)", out_recv or ""); no_of_recv_routes = m2.group(1) if m2 else "0"
 
                 neighbors_ws.append([
-                    device["ip"], desc, ip_addr,
+                    device["hostname"], device["ip"], desc, ip_addr,
                     no_of_adv_routes, no_of_recv_routes,
                     evpn_prefix_adv, evpn_prefix_recv
                 ])
                 time.sleep(0.2)
             except Exception as e:
                 print(f"⚠️ Failed to collect routes for {desc} ({ip_addr}): {e}")
-                neighbors_ws.append([device["ip"], desc, ip_addr, "ERROR", "ERROR", "ERROR", "ERROR"])
+                neighbors_ws.append([device["hostname"], device["ip"], desc, ip_addr, "ERROR", "ERROR", "ERROR", "ERROR"])
 
     # Interfaces (BD/BM/B4/B2/B#) to Interfaces sheet
     if bd_output:
         for desc, iface in extract_bd_interfaces(bd_output):
-            interfaces_ws.append([device["ip"], desc, iface, ""])
+            interfaces_ws.append([device["hostname"], device["ip"], desc, iface, ""])
     if bm_output:
         for desc, iface in extract_bm_interfaces(bm_output):
-            interfaces_ws.append([device["ip"], desc, iface, ""])
+            interfaces_ws.append([device["hostname"], device["ip"], desc, iface, ""])
     if b4_output:
         for desc, iface in extract_b4_interfaces(b4_output):
-            interfaces_ws.append([device["ip"], desc, iface, ""])
+            interfaces_ws.append([device["hostname"], device["ip"], desc, iface, ""])
     if b2_output:
         for desc, iface in extract_b2_interfaces(b2_output):
-            interfaces_ws.append([device["ip"], desc, iface, ""])
+            interfaces_ws.append([device["hostname"], device["ip"], desc, iface, ""])
     # Generic B# for B16/B17/B18
     if b16_output:
         for desc, iface in extract_b_interfaces(b16_output):
-            interfaces_ws.append([device["ip"], desc, iface, ""])
+            interfaces_ws.append([device["hostname"], device["ip"], desc, iface, ""])
     if b17_output:
         for desc, iface in extract_b_interfaces(b17_output):
-            interfaces_ws.append([device["ip"], desc, iface, ""])
+            interfaces_ws.append([device["hostname"], device["ip"], desc, iface, ""])
     if b18_output:
         for desc, iface in extract_b_interfaces(b18_output):
-            interfaces_ws.append([device["ip"], desc, iface, ""])
+            interfaces_ws.append([device["hostname"], device["ip"], desc, iface, ""])
 
     # LAG description + Threshold
     if lag_output:
@@ -643,7 +643,7 @@ for device in devices:
         for desc, lag_name in lag_interfaces:
             num_match = re.search(r'\d+', lag_name)
             if not num_match:
-                interfaces_ws.append([device["ip"], desc, lag_name, ""])
+                interfaces_ws.append([device["hostname"], device["ip"], desc, lag_name, ""])
                 continue
             lag_num = num_match.group(0)
             lag_show_cmd = f"show lag {lag_num}"
@@ -651,25 +651,93 @@ for device in devices:
             lag_detail_output = get_full_output_nokia(connection, lag_show_cmd)
             results_ws.append([device["ip"], lag_show_cmd, lag_detail_output])
             threshold = extract_threshold(lag_detail_output)
-            interfaces_ws.append([device["ip"], desc, lag_name, threshold])
+            interfaces_ws.append([device["hostname"], device["ip"], desc, lag_name, threshold])
 
     connection.disconnect()
     print(f"✅ Completed {device['ip']}")
 
-# After Nokia phase: reorder Neighbors by BGP_CONTEXTS
+# =========================================================
+# Sorting helper function (used for both Neighbors and Interfaces sheets)
+# =========================================================
+# Create hostname-to-device mapping for sorting
+hostname_to_device = {d["hostname"]: d for d in devices if d.get("hostname")}
+
+def get_device_sort_key(hostname):
+    """
+    Generate sort key for device ordering:
+    1. Primary (no tab) B07/B06/BD0/B01/B02
+    2. Secondary (no tab) B07/B06/BD0/B01/B02
+    3. Primary Tab B07/B06
+    4. Sister/Secondary Tab B07/B06
+    
+    Returns tuple: (role_priority, device_suffix_priority, tab_number)
+    """
+    device = hostname_to_device.get(hostname, {})
+    role = device.get("primary_secondary", "").lower() if device.get("primary_secondary") else None
+    primary_tab = device.get("primary_tab")
+    secondary_tab = device.get("secondary_tab")
+    
+    # Determine role priority
+    if role == "primary" and not primary_tab:
+        role_priority = 0  # Primary (no tab)
+    elif role == "secondary" and not secondary_tab:
+        role_priority = 1  # Secondary (no tab)
+    elif role == "primary" and primary_tab:
+        role_priority = 2  # Primary Tab
+    elif role == "secondary" and secondary_tab:
+        role_priority = 3  # Sister/Secondary Tab
+    else:
+        role_priority = 999  # Unknown
+    
+    # Determine device suffix priority: B07 -> B06 -> BD0 -> B01 -> B02
+    suffix_priority = 999
+    if hostname:
+        if hostname.endswith("B07"):
+            suffix_priority = 0
+        elif hostname.endswith("B06"):
+            suffix_priority = 1
+        elif hostname.endswith("BD0") or hostname.endswith("D0"):
+            suffix_priority = 2
+        elif hostname.endswith("B01") or hostname.endswith("01"):
+            suffix_priority = 3
+        elif hostname.endswith("B02") or hostname.endswith("02"):
+            suffix_priority = 4
+        elif hostname.endswith("B2C") or hostname.endswith("2C"):
+            suffix_priority = 5
+        elif hostname.endswith("B2D") or hostname.endswith("2D"):
+            suffix_priority = 6
+    
+    # Tab number (for sorting within same role/suffix)
+    tab_number = 0
+    if primary_tab:
+        try:
+            tab_number = int(primary_tab)
+        except:
+            pass
+    elif secondary_tab:
+        try:
+            tab_number = int(secondary_tab)
+        except:
+            pass
+    
+    return (role_priority, suffix_priority, tab_number)
+
+# After Nokia phase: reorder Neighbors by hostname order and then by BGP_CONTEXTS
 try:
+    
     context_order = {name: idx for idx, name in enumerate(BGP_CONTEXTS)}
     rows = list(neighbors_ws.iter_rows(min_row=2, values_only=True))
-    rows.sort(key=lambda r: context_order.get(r[1], 9999))
+    # Sort by: hostname order, then BGP context order
+    rows.sort(key=lambda r: (get_device_sort_key(r[0]), context_order.get(r[2], 9999)))
     for r in range(2, neighbors_ws.max_row + 1):
         for c in range(1, neighbors_ws.max_column + 1):
             neighbors_ws.cell(row=r, column=c).value = None
     for i, row in enumerate(rows, start=2):
         for j, val in enumerate(row, start=1):
             neighbors_ws.cell(row=i, column=j, value=val)
-    print("✅ Neighbor sheet reordered to match BGP_CONTEXTS list.")
+    print("✅ Neighbor sheet reordered by hostname (Primary→Secondary→Tabs) and BGP_CONTEXTS.")
 except Exception as e:
-    print(f"⚠️ Sorting skipped due to error: {e}")
+    print(f"⚠️ Neighbor sorting skipped due to error: {e}")
 
 # Save after Nokia phase (as requested)
 wb.save(input_file)
@@ -933,7 +1001,7 @@ if bd0 and b06_rr2 and b07_rr2:
                 m = re.search(r'Processed\s+(\d+)\s+prefixe?s?\s*,\s*(\d+)\s+paths?', out, re.IGNORECASE)
                 paths = m.group(2) if m else "ERROR"
                 neighbors_ws.append([
-                    bd0["ip"], desc, cmd.split("rd ")[1].split(" |")[0], "", "", paths, ""
+                    bd0["hostname"], bd0["ip"], desc, cmd.split("rd ")[1].split(" |")[0], "", "", paths, ""
                 ])
                 print(f"    → {desc}: paths={paths}")
         finally:
@@ -966,13 +1034,14 @@ if b01:
             bgp_number = m.group(1) if m else "UNKNOWN"
             # Insert at row 2 (push existing rows down)
             neighbors_ws.insert_rows(2, amount=1)
-            neighbors_ws.cell(row=2, column=1).value = b01["ip"]
-            neighbors_ws.cell(row=2, column=2).value = "BGP ID"
-            neighbors_ws.cell(row=2, column=3).value = bgp_number
-            neighbors_ws.cell(row=2, column=4).value = ""
+            neighbors_ws.cell(row=2, column=1).value = b01["hostname"]
+            neighbors_ws.cell(row=2, column=2).value = b01["ip"]
+            neighbors_ws.cell(row=2, column=3).value = "BGP ID"
+            neighbors_ws.cell(row=2, column=4).value = bgp_number
             neighbors_ws.cell(row=2, column=5).value = ""
             neighbors_ws.cell(row=2, column=6).value = ""
             neighbors_ws.cell(row=2, column=7).value = ""
+            neighbors_ws.cell(row=2, column=8).value = ""
             print(f"    → BGP ID = {bgp_number} (inserted at top of Neighbors)")
         finally:
             try:
@@ -986,6 +1055,26 @@ if b01:
                     pass
 else:
     print("ℹ️ B01 BGP-ID check skipped (B01 not present).")
+
+# =========================================================
+# Final reorder: Sort Interfaces sheet by hostname order
+# =========================================================
+try:
+    # Reuse the same get_device_sort_key function (it's already defined above)
+    # Sort Interfaces by hostname order
+    if_rows = list(interfaces_ws.iter_rows(min_row=2, values_only=True))
+    # Sort by: hostname order, then by interface description
+    if_rows.sort(key=lambda r: (get_device_sort_key(r[0]) if r[0] else (999, 999, 0), r[2] if len(r) > 2 else ""))
+    # Clear and rewrite
+    for r in range(2, interfaces_ws.max_row + 1):
+        for c in range(1, interfaces_ws.max_column + 1):
+            interfaces_ws.cell(row=r, column=c).value = None
+    for i, row in enumerate(if_rows, start=2):
+        for j, val in enumerate(row, start=1):
+            interfaces_ws.cell(row=i, column=j, value=val)
+    print("✅ Interfaces sheet reordered by hostname (Primary→Secondary→Tabs).")
+except Exception as e:
+    print(f"⚠️ Interfaces sorting skipped due to error: {e}")
 
 # =========================================================
 # Final save

@@ -222,15 +222,21 @@ Hardcoded in `network_device_collector.py`:
 - Leave empty if not applicable
 
 **Neighbors Sheet:**
-| Device IP | Neighbor Description | Neighbor IP | No of advRoutes | No of received Routes | BGP EVPN IPv4/IPv6 Prefix (Adv) | BGP EVPN IPv4/IPv6 Prefix (Recv) |
-|-----------|---------------------|-------------|-----------------|----------------------|--------------------------------|----------------------------------|
-| 10.1.1.1 | RAN_EBGP_MSE_V4 | 192.168.1.100 | 500 | 450 | | |
+| Hostname | Device IP | Neighbor Description | Neighbor IP | No of advRoutes | No of received Routes | BGP EVPN IPv4/IPv6 Prefix (Adv) | BGP EVPN IPv4/IPv6 Prefix (Recv) |
+|----------|-----------|---------------------|-------------|-----------------|----------------------|--------------------------------|----------------------------------|
+| NWCSDEBGB06 | 10.1.1.1 | RAN_EBGP_MSE_V4 | 192.168.1.100 | 500 | 450 | | |
 
 **Interfaces Sheet:**
-| Device IP | Interface Description | Interface Name | Threshold |
-|-----------|---------------------|----------------|-----------|
-| 10.1.1.1 | BD1 | 1/1/1 | |
-| 10.1.1.1 | NWCSDEBGB01_Bundle-Ether1 | lag 1 | 3 |
+| Hostname | Device IP | Interface Description | Interface Name | Threshold |
+|----------|-----------|---------------------|----------------|-----------|
+| NWCSDEBGB06 | 10.1.1.1 | BD1 | 1/1/1 | |
+| NWCSDEBGB01 | 10.1.1.1 | NWCSDEBGB01_Bundle-Ether1 | lag 1 | 3 |
+
+**Note:** Output is sorted by device role/type in this order:
+1. Primary devices (B07, B06, BD0, B01, B02)
+2. Secondary devices (B07, B06, BD0, B01, B02)
+3. Primary tab devices (B07, B06)
+4. Sister/Secondary tab devices (B07, B06)
 
 ---
 
