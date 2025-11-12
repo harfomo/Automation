@@ -613,29 +613,49 @@ for device in devices:
                 print(f"⚠️ Failed to collect routes for {desc} ({ip_addr}): {e}")
                 neighbors_ws.append([device["hostname"], device["ip"], desc, ip_addr, "ERROR", "ERROR", "ERROR", "ERROR"])
 
+    # Track interface description occurrences for this device to handle duplicates
+    interface_desc_counter = {}
+    
+    def add_interface_with_dedup(hostname, ip, desc, iface, threshold=""):
+        """
+        Add interface to sheet, appending _1, _2, _3 etc. for duplicate descriptions.
+        Example: B16, B16 -> B16_1, B16_2
+        """
+        # Track how many times we've seen this description
+        if desc in interface_desc_counter:
+            interface_desc_counter[desc] += 1
+            # Append sequential number for duplicates
+            numbered_desc = f"{desc}_{interface_desc_counter[desc]}"
+        else:
+            interface_desc_counter[desc] = 1
+            # First occurrence gets _1
+            numbered_desc = f"{desc}_1"
+        
+        interfaces_ws.append([hostname, ip, numbered_desc, iface, threshold])
+    
     # Interfaces (BD/BM/B4/B2/B#) to Interfaces sheet
     if bd_output:
         for desc, iface in extract_bd_interfaces(bd_output):
-            interfaces_ws.append([device["hostname"], device["ip"], desc, iface, ""])
+            add_interface_with_dedup(device["hostname"], device["ip"], desc, iface)
     if bm_output:
         for desc, iface in extract_bm_interfaces(bm_output):
-            interfaces_ws.append([device["hostname"], device["ip"], desc, iface, ""])
+            add_interface_with_dedup(device["hostname"], device["ip"], desc, iface)
     if b4_output:
         for desc, iface in extract_b4_interfaces(b4_output):
-            interfaces_ws.append([device["hostname"], device["ip"], desc, iface, ""])
+            add_interface_with_dedup(device["hostname"], device["ip"], desc, iface)
     if b2_output:
         for desc, iface in extract_b2_interfaces(b2_output):
-            interfaces_ws.append([device["hostname"], device["ip"], desc, iface, ""])
+            add_interface_with_dedup(device["hostname"], device["ip"], desc, iface)
     # Generic B# for B16/B17/B18
     if b16_output:
         for desc, iface in extract_b_interfaces(b16_output):
-            interfaces_ws.append([device["hostname"], device["ip"], desc, iface, ""])
+            add_interface_with_dedup(device["hostname"], device["ip"], desc, iface)
     if b17_output:
         for desc, iface in extract_b_interfaces(b17_output):
-            interfaces_ws.append([device["hostname"], device["ip"], desc, iface, ""])
+            add_interface_with_dedup(device["hostname"], device["ip"], desc, iface)
     if b18_output:
         for desc, iface in extract_b_interfaces(b18_output):
-            interfaces_ws.append([device["hostname"], device["ip"], desc, iface, ""])
+            add_interface_with_dedup(device["hostname"], device["ip"], desc, iface)
 
     # LAG description + Threshold
     if lag_output:
@@ -643,7 +663,7 @@ for device in devices:
         for desc, lag_name in lag_interfaces:
             num_match = re.search(r'\d+', lag_name)
             if not num_match:
-                interfaces_ws.append([device["hostname"], device["ip"], desc, lag_name, ""])
+                add_interface_with_dedup(device["hostname"], device["ip"], desc, lag_name)
                 continue
             lag_num = num_match.group(0)
             lag_show_cmd = f"show lag {lag_num}"
@@ -651,7 +671,7 @@ for device in devices:
             lag_detail_output = get_full_output_nokia(connection, lag_show_cmd)
             results_ws.append([device["ip"], lag_show_cmd, lag_detail_output])
             threshold = extract_threshold(lag_detail_output)
-            interfaces_ws.append([device["hostname"], device["ip"], desc, lag_name, threshold])
+            add_interface_with_dedup(device["hostname"], device["ip"], desc, lag_name, threshold)
 
     connection.disconnect()
     print(f"✅ Completed {device['ip']}")
