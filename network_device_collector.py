@@ -1017,42 +1017,52 @@ if bd0 and b06_rr2 and b07_rr2:
 else:
     print("ℹ️ BD0 EVPN checks skipped (BD0 or RR-2-PEER values missing).")
 
-# 2) B01 BGP-ID (prepend a row under header)
-if b01:
-    print(f"\n🔗 Connecting to B01 ({b01['hostname']} @ {b01['ip']}) — {b01['device_type']} BGP ID read")
-    conn, proxy_client = connect_cisco_device(b01["ip"], b01["device_type"], proxy_ip=b01.get("proxy_ip"))
-    if conn:
-        try:
-            cmd = 'sh run bgp | i "router bgp"'
-            print(f"  ▶ {cmd}")
-            out = conn.send_command(cmd, read_timeout=30)
-            results_ws.append([b01["ip"], cmd, out])
-            # e.g. "router bgp 65123"
-            m = re.search(r'router\s+bgp\s+(\d+)', out, re.IGNORECASE)
-            bgp_number = m.group(1) if m else "UNKNOWN"
-            # Insert at row 2 (push existing rows down)
-            neighbors_ws.insert_rows(2, amount=1)
-            neighbors_ws.cell(row=2, column=1).value = b01["hostname"]
-            neighbors_ws.cell(row=2, column=2).value = b01["ip"]
-            neighbors_ws.cell(row=2, column=3).value = "BGP ID"
-            neighbors_ws.cell(row=2, column=4).value = bgp_number
-            neighbors_ws.cell(row=2, column=5).value = ""
-            neighbors_ws.cell(row=2, column=6).value = ""
-            neighbors_ws.cell(row=2, column=7).value = ""
-            neighbors_ws.cell(row=2, column=8).value = ""
-            print(f"    → BGP ID = {bgp_number} (inserted at top of Neighbors)")
-        finally:
+# 2) All Cisco devices (B01, B02, B2C, B2D, etc.) - BGP ID collection
+# Collect list of all Cisco devices except BD0 (BD0 is handled separately above)
+cisco_devices = [d for d in devices if d["device_type"] in ["cisco_nxos", "cisco_ios_xr"] and not (d.get("hostname", "").endswith("BD0") or d.get("hostname", "").endswith("D0"))]
+
+if cisco_devices:
+    print(f"\n📋 Processing {len(cisco_devices)} Cisco device(s) (B01, B02, B2C, B2D, etc.)...")
+    
+    for cisco_dev in cisco_devices:
+        print(f"\n🔗 Connecting to {cisco_dev['hostname']} ({cisco_dev['ip']}) — {cisco_dev['device_type']} BGP ID read")
+        conn, proxy_client = connect_cisco_device(cisco_dev["ip"], cisco_dev["device_type"], proxy_ip=cisco_dev.get("proxy_ip"))
+        if conn:
             try:
-                conn.disconnect()
-            except Exception:
-                pass
-            if proxy_client:
+                cmd = 'sh run bgp | i "router bgp"'
+                print(f"  ▶ {cmd}")
+                out = conn.send_command(cmd, read_timeout=30)
+                results_ws.append([cisco_dev["ip"], cmd, out])
+                # e.g. "router bgp 65123"
+                m = re.search(r'router\s+bgp\s+(\d+)', out, re.IGNORECASE)
+                bgp_number = m.group(1) if m else "UNKNOWN"
+                # Append BGP ID to neighbors sheet
+                neighbors_ws.append([
+                    cisco_dev["hostname"],
+                    cisco_dev["ip"],
+                    "BGP ID",
+                    bgp_number,
+                    "", "", "", ""
+                ])
+                print(f"    → BGP ID = {bgp_number}")
+                print(f"✅ Completed {cisco_dev['hostname']}")
+            except Exception as e:
+                print(f"⚠️ Error collecting BGP ID from {cisco_dev['hostname']}: {e}")
+            finally:
                 try:
-                    proxy_client.close()
+                    conn.disconnect()
                 except Exception:
                     pass
+                if proxy_client:
+                    try:
+                        proxy_client.close()
+                    except Exception:
+                        pass
+        else:
+            print(f"❌ Could not connect to {cisco_dev['hostname']}")
+            log_failure(cisco_dev["ip"], f"Connection failed for {cisco_dev['hostname']}")
 else:
-    print("ℹ️ B01 BGP-ID check skipped (B01 not present).")
+    print("ℹ️ No Cisco devices (B01, B02, etc.) found to process.")
 
 # =========================================================
 # Final reorder: Sort Interfaces sheet by hostname order
