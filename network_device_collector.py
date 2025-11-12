@@ -935,30 +935,28 @@ def get_rr2_peers_from_neighbors():
     Scan Neighbors sheet to find:
       - B06_RR-2-PEER → neighbor IP where row belongs to B07 device with desc iBGP-TO-...B06
       - B07_RR-2-PEER → neighbor IP where row belongs to B06 device with desc iBGP-TO-...B07
+    
+    Note: After adding Hostname column, sheet structure is:
+    Column 0: Hostname, Column 1: Device IP, Column 2: Neighbor Description, Column 3: Neighbor IP
     """
-    # Map device IP -> Cilli_Hostname for quick lookup
-    ip_to_cilli = {}
-    for row in devices_ws.iter_rows(min_row=2, values_only=True):
-        if row and row[1]:
-            ip_to_cilli[row[1]] = row[0]
-
     b06_rr2 = None
     b07_rr2 = None
 
     for row in neighbors_ws.iter_rows(min_row=2, values_only=True):
-        if not row or not row[0] or not row[1]:
+        if not row or len(row) < 4 or not row[0] or not row[2]:
             continue
-        device_ip = row[0]
-        desc = str(row[1])
-        nei_ip = row[2]
-        host = ip_to_cilli.get(device_ip, "")
+        hostname = row[0]      # Column 0: Hostname
+        device_ip = row[1]     # Column 1: Device IP
+        desc = str(row[2])     # Column 2: Neighbor Description
+        nei_ip = row[3]        # Column 3: Neighbor IP
+        
         if desc.startswith("iBGP-TO-"):
             peer_host = desc.replace("iBGP-TO-", "").strip()
             # If neighbor desc ends with B07 and the local device is B06 => B07 RR-2-PEER
-            if peer_host.endswith("B07") and host.endswith("B06"):
+            if peer_host.endswith("B07") and hostname.endswith("B06"):
                 b07_rr2 = nei_ip
             # If neighbor desc ends with B06 and the local device is B07 => B06 RR-2-PEER
-            if peer_host.endswith("B06") and host.endswith("B07"):
+            if peer_host.endswith("B06") and hostname.endswith("B07"):
                 b06_rr2 = nei_ip
 
     return b06_rr2, b07_rr2
