@@ -767,7 +767,7 @@ def connect_cisco_device(ip, device_type, proxy_ip=None):
     Connect to Cisco device (NX-OS or IOS-XR) with credential caching.
     
     Authentication flow:
-    1. Try default credentials (skip if already known to fail)
+    1. Try default credentials first (always try for each device)
     2. Try cached manual credentials (if available)
     3. Prompt for manual credentials (with 2FA support) and cache them
     
@@ -777,14 +777,19 @@ def connect_cisco_device(ip, device_type, proxy_ip=None):
     global manual_creds, proxy_manual_creds, cisco_default_failed, proxy_default_failed
 
     # Decide which creds to try first for Cisco devices (NX-OS/IOS-XR)
+    # Always try default credentials first for each device, then try cached manual creds
     attempts = []
-    if not cisco_default_failed:
+    
+    # Try defaults first UNLESS we already have working manual credentials cached
+    # (This prevents trying defaults after user has successfully entered manual creds)
+    if manual_creds:
+        # User has already provided manual creds, use those first
+        attempts.append(("manual_cached", manual_creds[0], manual_creds[1]))
+        # Still try defaults as fallback in case manual creds don't work for this specific device
         attempts.append(("default", default_username, default_password))
     else:
-        print(f"   ⏭️ Skipping default credentials (already failed on previous device)")
-    
-    if manual_creds:
-        attempts.append(("manual_cached", manual_creds[0], manual_creds[1]))
+        # No manual creds yet, try defaults first
+        attempts.append(("default", default_username, default_password))
 
     proxy_client = None
     last_error = None
@@ -792,14 +797,16 @@ def connect_cisco_device(ip, device_type, proxy_ip=None):
     for label, u, p in attempts:
         try:
             if proxy_ip:
-                # Try default proxy creds then cached (skip default if already known to fail)
+                # Try proxy creds: if manual creds cached, try those first; otherwise try defaults
                 proxy_attempts = []
-                if not proxy_default_failed:
+                if proxy_manual_creds:
+                    # User has already provided manual jump creds, use those first
+                    proxy_attempts.append(("proxy_manual_cached", proxy_manual_creds[0], proxy_manual_creds[1]))
+                    # Still try defaults as fallback
                     proxy_attempts.append(("proxy_default", default_proxy_username, default_proxy_password))
                 else:
-                    print(f"   ⏭️ Skipping default jump-server credentials (already failed)")
-                if proxy_manual_creds:
-                    proxy_attempts.append(("proxy_manual_cached", proxy_manual_creds[0], proxy_manual_creds[1]))
+                    # No manual jump creds yet, try defaults first
+                    proxy_attempts.append(("proxy_default", default_proxy_username, default_proxy_password))
 
                 proxy_connected = False
                 last_proxy_error = None
@@ -813,9 +820,7 @@ def connect_cisco_device(ip, device_type, proxy_ip=None):
                     except Exception as pe:
                         last_proxy_error = pe
                         print(f"   ⚠️ Jump-server {plabel} failed: {pe}")
-                        # Mark proxy default credentials as failed for subsequent attempts
-                        if plabel == "proxy_default":
-                            proxy_default_failed = True
+                        # Note: We don't set proxy_default_failed flag anymore - each connection tries defaults independently
 
                 if not proxy_connected:
                     # Prompt once for jump creds and cache
@@ -858,9 +863,7 @@ def connect_cisco_device(ip, device_type, proxy_ip=None):
         except Exception as e:
             last_error = e
             print(f"   ⚠️ Cisco {device_type} {label} auth failed on {ip}: {e}")
-            # Mark default credentials as failed for subsequent devices
-            if label == "default":
-                cisco_default_failed = True
+            # Note: We don't set cisco_default_failed flag anymore - each device tries defaults independently
             if proxy_client:
                 try:
                     proxy_client.close()
