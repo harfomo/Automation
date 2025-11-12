@@ -193,6 +193,7 @@ The script auto-detects device types based on hostname patterns:
 
 - **Nokia SROS**: Hostnames ending with `B06` or `B07`
 - **Cisco NX-OS**: Hostnames ending with `BD#`, `BM#`, `B4#`, `B01`, `B02`, `B2C`, `B2D`, `BD0`
+- **Cisco IOS-XR**: Must be explicitly specified as `cisco_xr` in Device_Type column
 
 ### Default Credentials
 Hardcoded in `network_device_collector.py`:

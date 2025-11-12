@@ -37,7 +37,7 @@ if not os.path.exists(input_file):
     ws_devices.append(["NWCSDEBGBD0", "2001:4888:a1f:6032:196:28:0:d0", "cisco_nxos", "", ""])   # BD0 (no proxy)
     ws_devices.append(["NWCSDEBGB01", "1NWCSDEBGB01", "cisco_nxos", "198.226.102.37", ""])  # B01 via proxy (NX-OS)
     ws_devices.append(["NWCSDEBGB02", "1NWCSDEBGB02", "cisco_nxos", "198.226.102.37", ""])  # B02 via proxy (NX-OS)
-    # For IOS-XR devices, use: cisco_ios_xr
+    # For IOS-XR devices, use: cisco_xr
     wb.save(input_file)
     print(f"✅ Template created: {input_file}")
     print("➡️ Fill in your devices, then re-run the script.")
@@ -85,7 +85,7 @@ for row in devices_ws.iter_rows(min_row=2, values_only=True):
     # Determine device type:
     # 1. If Device_Type column is filled, use that (explicit override)
     # 2. Otherwise, use heuristic based on hostname pattern
-    # 3. For cisco_ios_xr devices, MUST specify in Device_Type column
+    # 3. For cisco_xr devices, MUST specify in Device_Type column
     
     if dtype:
         # Explicit device type provided in Excel - use it
@@ -98,11 +98,11 @@ for row in devices_ws.iter_rows(min_row=2, values_only=True):
         device_type = "cisco_nxos"
     else:
         # Default to Nokia if no pattern matches
-        # NOTE: For cisco_ios_xr, you MUST specify it in Device_Type column!
+        # NOTE: For cisco_xr, you MUST specify it in Device_Type column!
         device_type = "nokia_sros_ssh"
         if cilli:
             print(f"⚠️ Warning: Could not auto-detect device type for {cilli}, defaulting to nokia_sros_ssh")
-            print(f"   If this is a Cisco device, please specify 'cisco_nxos' or 'cisco_ios_xr' in Device_Type column")
+            print(f"   If this is a Cisco device, please specify 'cisco_nxos' or 'cisco_xr' in Device_Type column")
 
     devices.append({
         "hostname": cilli, 
@@ -925,8 +925,8 @@ def connect_cisco_device(ip, device_type, proxy_ip=None):
 def find_device_by_suffix(suffix):
     for d in devices:
         device_type = d.get("device_type", "")
-        # Support both cisco_nxos and cisco_ios_xr
-        if device_type in ["cisco_nxos", "cisco_ios_xr"] and d["hostname"] and d["hostname"].endswith(suffix):
+        # Support both cisco_nxos and cisco_xr
+        if device_type in ["cisco_nxos", "cisco_xr"] and d["hostname"] and d["hostname"].endswith(suffix):
             return d
     return None
 
@@ -1019,7 +1019,7 @@ else:
 
 # 2) All Cisco devices (B01, B02, B2C, B2D, etc.) - BGP ID collection
 # Collect list of all Cisco devices except BD0 (BD0 is handled separately above)
-cisco_devices = [d for d in devices if d["device_type"] in ["cisco_nxos", "cisco_ios_xr"] and not (d.get("hostname", "").endswith("BD0") or d.get("hostname", "").endswith("D0"))]
+cisco_devices = [d for d in devices if d["device_type"] in ["cisco_nxos", "cisco_xr"] and not (d.get("hostname", "").endswith("BD0") or d.get("hostname", "").endswith("D0"))]
 
 if cisco_devices:
     print(f"\n📋 Processing {len(cisco_devices)} Cisco device(s) (B01, B02, B2C, B2D, etc.)...")
