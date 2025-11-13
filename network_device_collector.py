@@ -510,9 +510,8 @@ for device in devices:
         lag20_output = get_full_output_nokia(connection, lag20_cmd)
         results_ws.append([device["ip"], lag20_cmd, lag20_output])
         
-        # Parse LAG 20 output to extract description, local-ip-address, and threshold
+        # Parse LAG 20 output to extract description and threshold
         lag20_desc = None
-        lag20_local_ip = None
         threshold_value = "0"
         
         lines = lag20_output.splitlines()
@@ -525,26 +524,20 @@ for device in devices:
                 if desc_match:
                     lag20_desc = desc_match.group(1).strip()
             
-            # Look for local-ip-address
-            if "local-ip-address" in line.lower():
-                ip_match = re.search(r'local-ip-address\s+([0-9a-fA-F:\.]+)', line, re.IGNORECASE)
-                if ip_match:
-                    lag20_local_ip = ip_match.group(1).strip()
-            
             # Look for port-threshold
             if "port-threshold" in line.lower():
                 thresh_match = re.search(r'port-threshold\s+(\d+)', line, re.IGNORECASE)
                 if thresh_match:
                     threshold_value = thresh_match.group(1)
         
-        # Add description and local-ip to Neighbors sheet
-        if lag20_desc and lag20_local_ip:
-            neighbors_ws.append([device["hostname"], device["ip"], lag20_desc, lag20_local_ip, "", "", "", ""])
-            print(f"    → LAG 20: {lag20_desc} / {lag20_local_ip}")
-        
-        # Add threshold to Neighbors sheet
-        neighbors_ws.append([device["hostname"], device["ip"], "LAG_20_threshold", threshold_value, "", "", "", ""])
-        print(f"    → LAG 20 threshold: {threshold_value}")
+        # Add description and threshold to Neighbors sheet
+        if lag20_desc:
+            neighbors_ws.append([device["hostname"], device["ip"], lag20_desc, threshold_value, "", "", "", ""])
+            print(f"    → LAG 20: {lag20_desc} / threshold: {threshold_value}")
+        else:
+            # If no description found, just add threshold
+            neighbors_ws.append([device["hostname"], device["ip"], "LAG_20_threshold", threshold_value, "", "", "", ""])
+            print(f"    → LAG 20 threshold: {threshold_value}")
         
         # Command 2: Show LAG description
         lag_desc_cmd = f'show lag description | match expression "({primary_cilli})|({sister_cilli})|(lag-1$)|(lag-2)|(lag-19$)|(lag-33$)" invert-match | match "(lag-)|(Bundle)" expression'
