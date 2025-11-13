@@ -530,13 +530,13 @@ for device in devices:
                 if thresh_match:
                     threshold_value = thresh_match.group(1)
         
-        # Add description and threshold to Neighbors sheet
+        # Add description and threshold to Interfaces sheet
         if lag20_desc:
-            neighbors_ws.append([device["hostname"], device["ip"], lag20_desc, threshold_value, "", "", "", ""])
+            interfaces_ws.append([device["hostname"], device["ip"], lag20_desc, "lag 20", threshold_value])
             print(f"    → LAG 20: {lag20_desc} / threshold: {threshold_value}")
         else:
-            # If no description found, just add threshold
-            neighbors_ws.append([device["hostname"], device["ip"], "LAG_20_threshold", threshold_value, "", "", "", ""])
+            # If no description found, just add threshold with generic label
+            interfaces_ws.append([device["hostname"], device["ip"], "LAG_20", "lag 20", threshold_value])
             print(f"    → LAG 20 threshold: {threshold_value}")
         
         # Command 2: Show LAG description
