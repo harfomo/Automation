@@ -493,6 +493,52 @@ for device in devices:
     except Exception:
         pass
 
+    # Check if device is a tab device (primary_cilli_tab1, sister_cilli_tab1, etc.)
+    is_tab_device = bool(device.get("primary_tab") or device.get("secondary_tab"))
+    
+    if is_tab_device:
+        # ===== TAB DEVICES (Primary Tab / Secondary Tab): Run only LAG description =====
+        tab_type = "Primary" if device.get("primary_tab") else "Secondary"
+        tab_num = device.get("primary_tab") or device.get("secondary_tab")
+        print(f"  🔹 {tab_type} Tab{tab_num} device detected - running limited command set")
+        
+        # Run only: Show LAG description
+        lag_desc_cmd = f'show lag description | match expression "({primary_cilli})|({sister_cilli})|(lag-1$)|(lag-2)|(lag-19$)|(lag-33$)" invert-match | match "(lag-)|(Bundle)" expression'
+        print(f"  ▶ Running: {lag_desc_cmd}")
+        lag_output = get_full_output_nokia(connection, lag_desc_cmd)
+        results_ws.append([device["ip"], lag_desc_cmd, lag_output])
+        
+        # Process LAG interfaces with deduplication
+        interface_desc_counter = {}
+        
+        def add_interface_with_dedup(hostname, ip, desc, iface, threshold=""):
+            if desc in interface_desc_counter:
+                interface_desc_counter[desc] += 1
+                numbered_desc = f"{desc}_{interface_desc_counter[desc]}"
+            else:
+                interface_desc_counter[desc] = 1
+                numbered_desc = f"{desc}_1"
+            interfaces_ws.append([hostname, ip, numbered_desc, iface, threshold])
+        
+        # Parse and add LAG interfaces
+        lag_interfaces = extract_lag_interfaces(lag_output)
+        for desc, lag_name in lag_interfaces:
+            num_match = re.search(r'\d+', lag_name)
+            if not num_match:
+                add_interface_with_dedup(device["hostname"], device["ip"], desc, lag_name)
+                continue
+            lag_num = num_match.group(0)
+            lag_show_cmd = f"show lag {lag_num}"
+            print(f"  ▶ Checking threshold for {lag_name}")
+            lag_detail_output = get_full_output_nokia(connection, lag_show_cmd)
+            results_ws.append([device["ip"], lag_show_cmd, lag_detail_output])
+            threshold = extract_threshold(lag_detail_output)
+            add_interface_with_dedup(device["hostname"], device["ip"], desc, lag_name, threshold)
+        
+        print(f"✅ Completed {tab_type} Tab{tab_num} {device['hostname']}")
+        connection.disconnect()
+        continue  # Skip the rest of the standard Nokia processing
+    
     # Check if device is secondary B06 or B07
     is_secondary_b07_or_b06 = (
         (device.get("primary_secondary") or "").lower() == "secondary" and
