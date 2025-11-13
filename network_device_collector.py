@@ -539,6 +539,47 @@ for device in devices:
             lag_output = output
         time.sleep(0.2)
 
+    # --- LAG 20 parsing for Primary B07 and B06 ---
+    # Check if device is Primary B07 or B06
+    is_primary_b07_or_b06 = (
+        device.get("primary_secondary", "").lower() == "primary" and
+        not device.get("primary_tab") and
+        (device.get("hostname", "").endswith("B07") or device.get("hostname", "").endswith("B06"))
+    )
+    
+    if is_primary_b07_or_b06:
+        print(f"  ▶ Running LAG 20 command for primary {device['hostname']}...")
+        lag20_cmd = '/admin display-config | match "lag 20" context all'
+        lag20_output = get_full_output_nokia(connection, lag20_cmd)
+        results_ws.append([device["ip"], lag20_cmd, lag20_output])
+        
+        # Parse LAG 20 output to extract description and local-ip-address
+        lag20_desc = None
+        lag20_local_ip = None
+        
+        lines = lag20_output.splitlines()
+        for i, line in enumerate(lines):
+            # Look for description
+            if "description" in line.lower():
+                desc_match = re.search(r'description\s+"([^"]+)"', line, re.IGNORECASE)
+                if not desc_match:
+                    desc_match = re.search(r'description\s+(\S+)', line, re.IGNORECASE)
+                if desc_match:
+                    lag20_desc = desc_match.group(1).strip()
+            
+            # Look for local-ip-address
+            if "local-ip-address" in line.lower():
+                ip_match = re.search(r'local-ip-address\s+([0-9a-fA-F:\.]+)', line, re.IGNORECASE)
+                if ip_match:
+                    lag20_local_ip = ip_match.group(1).strip()
+        
+        # Add to Neighbors sheet if we found both
+        if lag20_desc and lag20_local_ip:
+            neighbors_ws.append([device["hostname"], device["ip"], lag20_desc, lag20_local_ip, "", "", "", ""])
+            print(f"    → LAG 20: {lag20_desc} / {lag20_local_ip}")
+        else:
+            print(f"    ⚠️ LAG 20 data incomplete: desc={lag20_desc}, local-ip={lag20_local_ip}")
+
     # cpe-check to detect 501/502
     wsn_mobile_router_id = "501"
     if cpe_output:
