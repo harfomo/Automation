@@ -537,13 +537,25 @@ for device in devices:
                 bundle_output = get_full_output_nokia(connection, bundle_cmd)
                 results_ws.append([device["ip"], bundle_cmd, bundle_output])
                 
+                # Parse Minimum active links value from bundle output
+                # Example: "Minimum active links / bandwidth:          1 / 1 kbps"
+                min_active_links = ""
+                for line in bundle_output.splitlines():
+                    if "minimum active links" in line.lower():
+                        # Extract the first number after the colon
+                        match = re.search(r':\s*(\d+)\s*/', line)
+                        if match:
+                            min_active_links = match.group(1)
+                            print(f"    → Bundle-Ether{bundle_num} minimum active links: {min_active_links}")
+                            break
+                
                 # Add bundle info to Interfaces sheet
                 interfaces_ws.append([
                     device["hostname"], 
                     device["ip"], 
                     f"Bundle-Ether{bundle_num}", 
                     f"BE{bundle_num}", 
-                    ""
+                    min_active_links
                 ])
             
             if not bundle_numbers:
