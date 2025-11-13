@@ -495,7 +495,7 @@ for device in devices:
 
     # Check if device is secondary B06 or B07
     is_secondary_b07_or_b06 = (
-        device.get("primary_secondary", "").lower() == "secondary" and
+        (device.get("primary_secondary") or "").lower() == "secondary" and
         not device.get("secondary_tab") and
         (device.get("hostname", "").endswith("B07") or device.get("hostname", "").endswith("B06"))
     )
@@ -626,7 +626,7 @@ for device in devices:
     # --- LAG 20 parsing for Primary B07 and B06 ---
     # Check if device is Primary B07 or B06
     is_primary_b07_or_b06 = (
-        device.get("primary_secondary", "").lower() == "primary" and
+        (device.get("primary_secondary") or "").lower() == "primary" and
         not device.get("primary_tab") and
         (device.get("hostname", "").endswith("B07") or device.get("hostname", "").endswith("B06"))
     )
@@ -818,7 +818,7 @@ def get_device_sort_key(hostname):
     Returns tuple: (role_priority, device_suffix_priority, tab_number)
     """
     device = hostname_to_device.get(hostname, {})
-    role = device.get("primary_secondary", "").lower() if device.get("primary_secondary") else None
+    role = (device.get("primary_secondary") or "").lower() if device.get("primary_secondary") else None
     primary_tab = device.get("primary_tab")
     secondary_tab = device.get("secondary_tab")
     
