@@ -504,23 +504,47 @@ for device in devices:
         # ===== SECONDARY B06/B07: Run only LAG 20 port-thresh and LAG description =====
         print(f"  🔹 Secondary B06/B07 detected - running limited command set")
         
-        # Command 1: LAG 20 port-thresh
-        lag20_thresh_cmd = '/admin display-config | match "lag 20" context all | match port-thresh'
-        print(f"  ▶ Running: {lag20_thresh_cmd}")
-        lag20_thresh_output = get_full_output_nokia(connection, lag20_thresh_cmd)
-        results_ws.append([device["ip"], lag20_thresh_cmd, lag20_thresh_output])
+        # Command 1: LAG 20 full config (to get description, local-ip-address, and port-thresh)
+        lag20_cmd = '/admin display-config | match "lag 20" context all'
+        print(f"  ▶ Running: {lag20_cmd}")
+        lag20_output = get_full_output_nokia(connection, lag20_cmd)
+        results_ws.append([device["ip"], lag20_cmd, lag20_output])
         
-        # Parse threshold value - if no output, threshold is 0
+        # Parse LAG 20 output to extract description, local-ip-address, and threshold
+        lag20_desc = None
+        lag20_local_ip = None
         threshold_value = "0"
-        if lag20_thresh_output and lag20_thresh_output.strip():
-            # Look for port-threshold value in output
-            thresh_match = re.search(r'port-threshold\s+(\d+)', lag20_thresh_output, re.IGNORECASE)
-            if thresh_match:
-                threshold_value = thresh_match.group(1)
         
-        print(f"    → LAG 20 threshold: {threshold_value}")
+        lines = lag20_output.splitlines()
+        for i, line in enumerate(lines):
+            # Look for description
+            if "description" in line.lower():
+                desc_match = re.search(r'description\s+"([^"]+)"', line, re.IGNORECASE)
+                if not desc_match:
+                    desc_match = re.search(r'description\s+(\S+)', line, re.IGNORECASE)
+                if desc_match:
+                    lag20_desc = desc_match.group(1).strip()
+            
+            # Look for local-ip-address
+            if "local-ip-address" in line.lower():
+                ip_match = re.search(r'local-ip-address\s+([0-9a-fA-F:\.]+)', line, re.IGNORECASE)
+                if ip_match:
+                    lag20_local_ip = ip_match.group(1).strip()
+            
+            # Look for port-threshold
+            if "port-threshold" in line.lower():
+                thresh_match = re.search(r'port-threshold\s+(\d+)', line, re.IGNORECASE)
+                if thresh_match:
+                    threshold_value = thresh_match.group(1)
+        
+        # Add description and local-ip to Neighbors sheet
+        if lag20_desc and lag20_local_ip:
+            neighbors_ws.append([device["hostname"], device["ip"], lag20_desc, lag20_local_ip, "", "", "", ""])
+            print(f"    → LAG 20: {lag20_desc} / {lag20_local_ip}")
+        
         # Add threshold to Neighbors sheet
         neighbors_ws.append([device["hostname"], device["ip"], "LAG_20_threshold", threshold_value, "", "", "", ""])
+        print(f"    → LAG 20 threshold: {threshold_value}")
         
         # Command 2: Show LAG description
         lag_desc_cmd = f'show lag description | match expression "({primary_cilli})|({sister_cilli})|(lag-1$)|(lag-2)|(lag-19$)|(lag-33$)" invert-match | match "(lag-)|(Bundle)" expression'
