@@ -1278,9 +1278,94 @@ if bd0 and b06_rr2 and b07_rr2:
 else:
     print("ℹ️ BD0 EVPN checks skipped (BD0 or RR-2-PEER values missing).")
 
-# 2) All Cisco devices (B01, B02, B2C, B2D, etc.) - BGP ID collection
-# Collect list of all Cisco devices except BD0 (BD0 is handled separately above)
-cisco_devices = [d for d in devices if d["device_type"] in ["cisco_nxos", "cisco_xr"] and not (d.get("hostname", "").endswith("BD0") or d.get("hostname", "").endswith("D0"))]
+# 2) Cisco Tab Devices - Handle separately
+cisco_tab_devices = [
+    d for d in devices 
+    if d["device_type"] in ["cisco_nxos", "cisco_xr"]
+    and (d.get("primary_tab") or d.get("secondary_tab"))
+]
+
+if cisco_tab_devices:
+    print(f"\n📋 Processing {len(cisco_tab_devices)} Cisco Tab device(s)...")
+    
+    for cisco_tab in cisco_tab_devices:
+        tab_type = "Primary" if cisco_tab.get("primary_tab") else "Secondary"
+        tab_num = cisco_tab.get("primary_tab") or cisco_tab.get("secondary_tab")
+        print(f"\n🔗 Connecting to {cisco_tab['hostname']} ({cisco_tab['ip']}) — {cisco_tab['device_type']} {tab_type} Tab{tab_num}")
+        
+        conn, proxy_client = connect_cisco_device(cisco_tab["ip"], cisco_tab["device_type"], proxy_ip=cisco_tab.get("proxy_ip"))
+        if conn:
+            try:
+                # Run sh int description to find bundle-ether interfaces
+                int_desc_cmd = "sh int description"
+                print(f"  ▶ Running: {int_desc_cmd}")
+                out = conn.send_command(int_desc_cmd, read_timeout=30)
+                results_ws.append([cisco_tab["ip"], int_desc_cmd, out])
+                
+                # Parse for Bundle-Ether interfaces
+                # Look for BE interfaces in the output
+                bundle_numbers = []
+                for line in out.splitlines():
+                    be_match = re.search(r'\bBE(\d+)\b', line, re.IGNORECASE)
+                    if be_match:
+                        bundle_num = be_match.group(1)
+                        bundle_numbers.append(bundle_num)
+                        print(f"    → Found Bundle-Ether{bundle_num}")
+                
+                # Run show bundle for each
+                for bundle_num in bundle_numbers:
+                    bundle_cmd = f"show bundle bundle-ether{bundle_num}"
+                    print(f"  ▶ Running: {bundle_cmd}")
+                    bundle_out = conn.send_command(bundle_cmd, read_timeout=30)
+                    results_ws.append([cisco_tab["ip"], bundle_cmd, bundle_out])
+                    
+                    # Parse Minimum active links
+                    min_active_links = ""
+                    for line in bundle_out.splitlines():
+                        if "minimum active links" in line.lower():
+                            match = re.search(r':\s*(\d+)\s*/', line)
+                            if match:
+                                min_active_links = match.group(1)
+                                print(f"    → Bundle-Ether{bundle_num} minimum active links: {min_active_links}")
+                                break
+                    
+                    interfaces_ws.append([
+                        cisco_tab["hostname"],
+                        cisco_tab["ip"],
+                        f"Bundle-Ether{bundle_num}",
+                        f"BE{bundle_num}",
+                        min_active_links
+                    ])
+                
+                print(f"✅ Completed {tab_type} Tab{tab_num} {cisco_tab['hostname']}")
+            except Exception as e:
+                print(f"⚠️ Error processing {cisco_tab['hostname']}: {e}")
+            finally:
+                try:
+                    conn.disconnect()
+                except Exception:
+                    pass
+                if proxy_client:
+                    try:
+                        proxy_client.close()
+                    except Exception:
+                        pass
+        else:
+            print(f"❌ Could not connect to {cisco_tab['hostname']}")
+            log_failure(cisco_tab["ip"], f"Connection failed for {cisco_tab['hostname']}")
+else:
+    print("ℹ️ No Cisco tab devices found.")
+
+# 3) All Cisco devices (B01, B02, B2C, B2D, etc.) - BGP ID collection
+# Collect list of all Cisco devices except:
+#   - BD0 (handled separately above)
+#   - Tab devices (handled separately above)
+cisco_devices = [
+    d for d in devices 
+    if d["device_type"] in ["cisco_nxos", "cisco_xr"] 
+    and not (d.get("hostname", "").endswith("BD0") or d.get("hostname", "").endswith("D0"))
+    and not (d.get("primary_tab") or d.get("secondary_tab"))  # Exclude tab devices
+]
 
 if cisco_devices:
     print(f"\n📋 Processing {len(cisco_devices)} Cisco device(s) (B01, B02, B2C, B2D, etc.)...")
