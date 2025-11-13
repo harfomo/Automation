@@ -497,47 +497,102 @@ for device in devices:
     is_tab_device = bool(device.get("primary_tab") or device.get("secondary_tab"))
     
     if is_tab_device:
-        # ===== TAB DEVICES (Primary Tab / Secondary Tab): Run only LAG description =====
         tab_type = "Primary" if device.get("primary_tab") else "Secondary"
         tab_num = device.get("primary_tab") or device.get("secondary_tab")
-        print(f"  🔹 {tab_type} Tab{tab_num} device detected - running limited command set")
         
-        # Run only: Show LAG description
-        lag_desc_cmd = f'show lag description | match expression "({primary_cilli})|({sister_cilli})|(lag-1$)|(lag-2)|(lag-19$)|(lag-33$)" invert-match | match "(lag-)|(Bundle)" expression'
-        print(f"  ▶ Running: {lag_desc_cmd}")
-        lag_output = get_full_output_nokia(connection, lag_desc_cmd)
-        results_ws.append([device["ip"], lag_desc_cmd, lag_output])
+        # Check if this is sister_cilli_tab2 or tab3
+        is_sister_tab2_or_3 = (
+            device.get("secondary_tab") and 
+            device.get("secondary_tab") in ["2", "3"]
+        )
         
-        # Process LAG interfaces with deduplication
-        interface_desc_counter = {}
+        if is_sister_tab2_or_3:
+            # ===== SISTER TAB 2/3: Run show int description and bundle-ether commands =====
+            print(f"  🔹 Sister Tab{tab_num} device detected - running bundle-ether commands")
+            
+            # Command 1: Show interface description to find bundle numbers
+            int_desc_cmd = "sh int description"
+            print(f"  ▶ Running: {int_desc_cmd}")
+            int_desc_output = get_full_output_nokia(connection, int_desc_cmd)
+            results_ws.append([device["ip"], int_desc_cmd, int_desc_output])
+            
+            # Parse output to find BE interfaces with sister_cilli in description
+            bundle_numbers = []
+            lines = int_desc_output.splitlines()
+            for line in lines:
+                # Look for lines with BE interfaces and sister_cilli in description
+                # Example: BE3                up          up          WMTPPAAAB06_lag-3
+                if sister_cilli.upper() in line.upper() or sister_cilli.lower() in line.lower():
+                    # Extract BE number from interface name (BE3 -> 3)
+                    be_match = re.search(r'\bBE(\d+)\b', line, re.IGNORECASE)
+                    if be_match:
+                        bundle_num = be_match.group(1)
+                        bundle_numbers.append(bundle_num)
+                        print(f"    → Found Bundle-Ether{bundle_num} with {sister_cilli} description")
+            
+            # Command 2: Run show bundle bundle-ether# for each found bundle
+            for bundle_num in bundle_numbers:
+                bundle_cmd = f"show bundle bundle-ether{bundle_num}"
+                print(f"  ▶ Running: {bundle_cmd}")
+                bundle_output = get_full_output_nokia(connection, bundle_cmd)
+                results_ws.append([device["ip"], bundle_cmd, bundle_output])
+                
+                # Add bundle info to Interfaces sheet
+                interfaces_ws.append([
+                    device["hostname"], 
+                    device["ip"], 
+                    f"Bundle-Ether{bundle_num}", 
+                    f"BE{bundle_num}", 
+                    ""
+                ])
+            
+            if not bundle_numbers:
+                print(f"    ⚠️ No Bundle-Ether interfaces found with {sister_cilli} description")
+            
+            print(f"✅ Completed Sister Tab{tab_num} {device['hostname']}")
+            connection.disconnect()
+            continue  # Skip the rest of the standard Nokia processing
         
-        def add_interface_with_dedup(hostname, ip, desc, iface, threshold=""):
-            if desc in interface_desc_counter:
-                interface_desc_counter[desc] += 1
-                numbered_desc = f"{desc}_{interface_desc_counter[desc]}"
-            else:
-                interface_desc_counter[desc] = 1
-                numbered_desc = f"{desc}_1"
-            interfaces_ws.append([hostname, ip, numbered_desc, iface, threshold])
-        
-        # Parse and add LAG interfaces
-        lag_interfaces = extract_lag_interfaces(lag_output)
-        for desc, lag_name in lag_interfaces:
-            num_match = re.search(r'\d+', lag_name)
-            if not num_match:
-                add_interface_with_dedup(device["hostname"], device["ip"], desc, lag_name)
-                continue
-            lag_num = num_match.group(0)
-            lag_show_cmd = f"show lag {lag_num}"
-            print(f"  ▶ Checking threshold for {lag_name}")
-            lag_detail_output = get_full_output_nokia(connection, lag_show_cmd)
-            results_ws.append([device["ip"], lag_show_cmd, lag_detail_output])
-            threshold = extract_threshold(lag_detail_output)
-            add_interface_with_dedup(device["hostname"], device["ip"], desc, lag_name, threshold)
-        
-        print(f"✅ Completed {tab_type} Tab{tab_num} {device['hostname']}")
-        connection.disconnect()
-        continue  # Skip the rest of the standard Nokia processing
+        else:
+            # ===== OTHER TAB DEVICES (Primary Tab1, Sister Tab1): Run only LAG description =====
+            print(f"  🔹 {tab_type} Tab{tab_num} device detected - running limited command set")
+            
+            # Run only: Show LAG description
+            lag_desc_cmd = f'show lag description | match expression "({primary_cilli})|({sister_cilli})|(lag-1$)|(lag-2)|(lag-19$)|(lag-33$)" invert-match | match "(lag-)|(Bundle)" expression'
+            print(f"  ▶ Running: {lag_desc_cmd}")
+            lag_output = get_full_output_nokia(connection, lag_desc_cmd)
+            results_ws.append([device["ip"], lag_desc_cmd, lag_output])
+            
+            # Process LAG interfaces with deduplication
+            interface_desc_counter = {}
+            
+            def add_interface_with_dedup(hostname, ip, desc, iface, threshold=""):
+                if desc in interface_desc_counter:
+                    interface_desc_counter[desc] += 1
+                    numbered_desc = f"{desc}_{interface_desc_counter[desc]}"
+                else:
+                    interface_desc_counter[desc] = 1
+                    numbered_desc = f"{desc}_1"
+                interfaces_ws.append([hostname, ip, numbered_desc, iface, threshold])
+            
+            # Parse and add LAG interfaces
+            lag_interfaces = extract_lag_interfaces(lag_output)
+            for desc, lag_name in lag_interfaces:
+                num_match = re.search(r'\d+', lag_name)
+                if not num_match:
+                    add_interface_with_dedup(device["hostname"], device["ip"], desc, lag_name)
+                    continue
+                lag_num = num_match.group(0)
+                lag_show_cmd = f"show lag {lag_num}"
+                print(f"  ▶ Checking threshold for {lag_name}")
+                lag_detail_output = get_full_output_nokia(connection, lag_show_cmd)
+                results_ws.append([device["ip"], lag_show_cmd, lag_detail_output])
+                threshold = extract_threshold(lag_detail_output)
+                add_interface_with_dedup(device["hostname"], device["ip"], desc, lag_name, threshold)
+            
+            print(f"✅ Completed {tab_type} Tab{tab_num} {device['hostname']}")
+            connection.disconnect()
+            continue  # Skip the rest of the standard Nokia processing
     
     # Check if device is secondary B06 or B07
     is_secondary_b07_or_b06 = (
